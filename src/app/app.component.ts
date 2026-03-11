@@ -13,7 +13,7 @@ import { NavbarComponent } from './components/navbar/navbar.component';
     </main>
   `,
   styles: [`
-    main { min-height: calc(100vh - 64px); background: #fafafa; }
+    main { min-height: calc(100vh - 72px); }
   `],
 })
 export class AppComponent {}

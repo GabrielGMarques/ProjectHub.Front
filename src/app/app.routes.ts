@@ -7,5 +7,8 @@ export const routes: Routes = [
   { path: 'auth/callback', loadComponent: () => import('./pages/auth-callback/auth-callback.component').then(m => m.AuthCallbackComponent) },
   { path: 'dashboard', loadComponent: () => import('./pages/dashboard/dashboard.component').then(m => m.DashboardComponent), canActivate: [authGuard] },
   { path: 'gantt', loadComponent: () => import('./pages/gantt/gantt.component').then(m => m.GanttComponent), canActivate: [authGuard] },
+  { path: 'burndown', loadComponent: () => import('./pages/burndown/burndown.component').then(m => m.BurndownComponent), canActivate: [authGuard] },
+  { path: 'schedule', loadComponent: () => import('./pages/schedule/schedule.component').then(m => m.ScheduleComponent), canActivate: [authGuard] },
+  { path: 'project/:id', loadComponent: () => import('./pages/project-detail/project-detail.component').then(m => m.ProjectDetailComponent), canActivate: [authGuard] },
   { path: '**', redirectTo: '/dashboard' },
 ];
