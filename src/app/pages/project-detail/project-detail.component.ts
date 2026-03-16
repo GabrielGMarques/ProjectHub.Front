@@ -14,10 +14,11 @@ import { MatOptionModule } from '@angular/material/core';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { marked } from 'marked';
 import { ProjectService } from '../../services/project.service';
-import { Project, ChatMessage, Todo, WeeklySchedule, AIModel, AIModelOption } from '../../models/project.model';
+import { Project, ChatMessage, CoachAction, Todo, WeeklySchedule, AIModel, AIModelOption } from '../../models/project.model';
 import { MarketingResearchComponent } from '../../components/marketing-research/marketing-research.component';
 import { AgentTerminalComponent } from '../../components/agent-terminal/agent-terminal.component';
 import { SkillsPanelComponent } from '../../components/skills-panel/skills-panel.component';
+import { FileExplorerComponent } from '../../components/file-explorer/file-explorer.component';
 
 @Component({
   selector: 'app-project-detail',
@@ -26,7 +27,7 @@ import { SkillsPanelComponent } from '../../components/skills-panel/skills-panel
     CommonModule, FormsModule, ReactiveFormsModule, RouterModule,
     MatIconModule, MatProgressSpinnerModule, MatSnackBarModule, MatTooltipModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatOptionModule, MatCheckboxModule,
-    MarketingResearchComponent, AgentTerminalComponent, SkillsPanelComponent,
+    MarketingResearchComponent, AgentTerminalComponent, SkillsPanelComponent, FileExplorerComponent,
   ],
   template: `
     <div class="detail-page">
@@ -212,6 +213,7 @@ import { SkillsPanelComponent } from '../../components/skills-panel/skills-panel
           <button class="tab" [class.active]="activeTab === 'marketing'" (click)="activeTab = 'marketing'"><mat-icon>campaign</mat-icon> Marketing</button>
           <button class="tab" [class.active]="activeTab === 'agent'" (click)="activeTab = 'agent'"><mat-icon>terminal</mat-icon> Agent</button>
           <button class="tab" [class.active]="activeTab === 'skills'" (click)="activeTab = 'skills'"><mat-icon>auto_fix_high</mat-icon> Skills</button>
+          <button class="tab" [class.active]="activeTab === 'files'" (click)="activeTab = 'files'"><mat-icon>folder_open</mat-icon> Files</button>
         </div>
 
         @if (activeTab === 'marketing') {
@@ -220,6 +222,8 @@ import { SkillsPanelComponent } from '../../components/skills-panel/skills-panel
           <app-agent-terminal [project]="project"></app-agent-terminal>
         } @else if (activeTab === 'skills') {
           <app-skills-panel [project]="project" [availableModels]="availableModels"></app-skills-panel>
+        } @else if (activeTab === 'files') {
+          <app-file-explorer [project]="project" (projectUpdated)="project = $event"></app-file-explorer>
         }
 
         <!-- Main content grid (Overview tab) -->
@@ -337,18 +341,25 @@ import { SkillsPanelComponent } from '../../components/skills-panel/skills-panel
                 <mat-icon>psychology</mat-icon>
                 AI Coach
               </span>
-              <div class="model-selector">
-                @for (m of availableModels; track m.id) {
-                  <button
-                    class="model-chip"
-                    [class.active]="selectedModel === m.id"
-                    [class.unavailable]="!m.available"
-                    (click)="m.available && selectModel(m.id)"
-                    [matTooltip]="m.available ? m.name : m.name + ' (no API key)'"
-                  >
-                    {{ m.name }}
+              <div class="coach-header-actions">
+                @if (messages.length > 0) {
+                  <button class="icon-btn" (click)="clearChat()" matTooltip="Clear chat">
+                    <mat-icon>delete_sweep</mat-icon>
                   </button>
                 }
+                <div class="model-selector">
+                  @for (m of availableModels; track m.id) {
+                    <button
+                      class="model-chip"
+                      [class.active]="selectedModel === m.id"
+                      [class.unavailable]="!m.available"
+                      (click)="m.available && selectModel(m.id)"
+                      [matTooltip]="m.available ? m.name : m.name + ' (no API key)'"
+                    >
+                      {{ m.name }}
+                    </button>
+                  }
+                </div>
               </div>
             </div>
 
@@ -357,24 +368,72 @@ import { SkillsPanelComponent } from '../../components/skills-panel/skills-panel
                 <div class="chat-welcome">
                   <mat-icon>smart_toy</mat-icon>
                   <h3>Project Coach</h3>
-                  <p>Ask me anything about growing this project. I'll use your project details and documents to give you tailored advice.</p>
+                  <p>Ask me anything about growing this project. I can also suggest changes to your todos, presentation, and more.</p>
                   <div class="suggestions">
                     <button class="suggestion" (click)="sendSuggestion('How can I increase my MRR?')">How can I increase my MRR?</button>
                     <button class="suggestion" (click)="sendSuggestion('What should I focus on next?')">What should I focus on next?</button>
                     <button class="suggestion" (click)="sendSuggestion('Review my monetization plan')">Review my monetization plan</button>
+                    <button class="suggestion" (click)="sendSuggestion('Create a TODO list for this week')">Create a TODO list for this week</button>
                   </div>
                 </div>
               }
-              @for (msg of messages; track $index) {
+              @for (msg of messages; track $index; let mi = $index) {
                 <div class="chat-msg" [class.user]="msg.role === 'user'" [class.assistant]="msg.role === 'assistant'">
                   <div class="msg-avatar">
                     <mat-icon>{{ msg.role === 'user' ? 'person' : 'smart_toy' }}</mat-icon>
                   </div>
-                  @if (msg.role === 'assistant') {
-                    <div class="msg-content markdown-body" [innerHTML]="parsedMessages[$index]"></div>
-                  } @else {
-                    <div class="msg-content">{{ msg.content }}</div>
-                  }
+                  <div class="msg-content-wrapper">
+                    @if (msg.role === 'assistant') {
+                      <div class="msg-content markdown-body" [innerHTML]="parsedMessages[mi]"></div>
+                    } @else {
+                      <div class="msg-content">{{ msg.content }}</div>
+                    }
+                    @if (msg.actions?.length) {
+                      @for (action of msg.actions; track $index; let ai = $index) {
+                        <div class="action-card" [class.accepted]="action.status === 'accepted'" [class.rejected]="action.status === 'rejected'">
+                          <div class="action-card-header">
+                            <mat-icon>{{ getActionIcon(action.type) }}</mat-icon>
+                            <span class="action-label">{{ getActionLabel(action) }}</span>
+                          </div>
+                          <div class="action-card-body">
+                            @if (action.type === 'add_todos' && action.items) {
+                              <ul class="action-todo-list">
+                                @for (item of action.items; track $index) {
+                                  <li>{{ item }}</li>
+                                }
+                              </ul>
+                            }
+                            @if (action.type === 'update_presentation' && action.content) {
+                              <div class="action-preview">{{ action.content.length > 200 ? action.content.substring(0, 200) + '...' : action.content }}</div>
+                            }
+                            @if (action.type === 'update_field') {
+                              <div class="action-preview"><strong>{{ action.field }}:</strong> {{ action.value }}</div>
+                            }
+                          </div>
+                          @if (action.status === 'pending') {
+                            <div class="action-card-footer">
+                              <button class="action-btn apply" (click)="applyAction(mi, ai)">
+                                <mat-icon>check</mat-icon> Apply
+                              </button>
+                              <button class="action-btn dismiss" (click)="dismissAction(mi, ai)">
+                                <mat-icon>close</mat-icon> Dismiss
+                              </button>
+                            </div>
+                          }
+                          @if (action.status === 'accepted') {
+                            <div class="action-status applied">
+                              <mat-icon>check_circle</mat-icon> Applied
+                            </div>
+                          }
+                          @if (action.status === 'rejected') {
+                            <div class="action-status dismissed">
+                              <mat-icon>cancel</mat-icon> Dismissed
+                            </div>
+                          }
+                        </div>
+                      }
+                    }
+                  </div>
                 </div>
               }
               @if (aiLoading) {
@@ -638,6 +697,8 @@ import { SkillsPanelComponent } from '../../components/skills-panel/skills-panel
     }
     .suggestion:hover { border-color: var(--color-primary); color: var(--color-primary); }
 
+    .coach-header-actions { display: flex; align-items: center; gap: 8px; }
+
     .chat-msg { display: flex; gap: 10px; align-items: flex-start; }
     .chat-msg.user { flex-direction: row-reverse; }
     .msg-avatar {
@@ -648,12 +709,73 @@ import { SkillsPanelComponent } from '../../components/skills-panel/skills-panel
     .chat-msg.assistant .msg-avatar { background: rgba(212, 175, 55, 0.15); }
     .msg-avatar mat-icon { font-size: 16px; width: 16px; height: 16px; color: var(--color-text-subtle); }
     .chat-msg.assistant .msg-avatar mat-icon { color: var(--color-primary); }
+    .msg-content-wrapper { max-width: 80%; display: flex; flex-direction: column; gap: 8px; }
     .msg-content {
       padding: 10px 14px; border-radius: var(--radius-md); font-size: 0.88rem;
-      line-height: 1.6; max-width: 80%; word-break: break-word;
+      line-height: 1.6; word-break: break-word;
     }
+    .chat-msg.user .msg-content-wrapper { align-items: flex-end; }
     .chat-msg.user .msg-content { background: var(--color-primary); color: #0A0A0A; border-bottom-right-radius: 4px; white-space: pre-wrap; }
     .chat-msg.assistant .msg-content { background: var(--color-bg); color: var(--color-text); border-bottom-left-radius: 4px; }
+
+    /* Action Cards */
+    .action-card {
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      background: var(--color-bg-card);
+      transition: all var(--transition);
+    }
+    .action-card.accepted { border-color: #22c55e40; }
+    .action-card.rejected { border-color: var(--color-border-light); opacity: 0.6; }
+    .action-card-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px;
+      background: rgba(212, 175, 55, 0.06);
+      border-bottom: 1px solid var(--color-border-light);
+      font-size: 0.82rem; font-weight: 600; color: var(--color-primary);
+    }
+    .action-card-header mat-icon { font-size: 18px; width: 18px; height: 18px; }
+    .action-label { flex: 1; }
+    .action-card-body {
+      padding: 10px 14px;
+      font-size: 0.85rem; color: var(--color-text);
+    }
+    .action-todo-list {
+      margin: 0; padding-left: 1.2em;
+      list-style: disc;
+    }
+    .action-todo-list li { margin: 3px 0; }
+    .action-preview {
+      font-size: 0.82rem; color: var(--color-text-subtle);
+      line-height: 1.5; white-space: pre-wrap;
+    }
+    .action-card-footer {
+      display: flex; gap: 8px;
+      padding: 8px 14px;
+      border-top: 1px solid var(--color-border-light);
+    }
+    .action-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 5px 14px; border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm); background: var(--color-bg);
+      color: var(--color-text); font-family: var(--font-family);
+      font-size: 0.78rem; font-weight: 600; cursor: pointer;
+      transition: all var(--transition);
+    }
+    .action-btn mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .action-btn.apply { border-color: #22c55e40; color: #22c55e; }
+    .action-btn.apply:hover { background: #22c55e15; border-color: #22c55e; }
+    .action-btn.dismiss { border-color: #ef444440; color: #ef4444; }
+    .action-btn.dismiss:hover { background: #ef444415; border-color: #ef4444; }
+    .action-status {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 14px; font-size: 0.78rem; font-weight: 600;
+      border-top: 1px solid var(--color-border-light);
+    }
+    .action-status mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .action-status.applied { color: #22c55e; }
+    .action-status.dismissed { color: var(--color-text-subtle); }
 
     /* Markdown in assistant messages */
     .markdown-body p { margin: 0 0 .5em; }
@@ -741,7 +863,7 @@ export class ProjectDetailComponent implements OnInit {
   project: Project | null = null;
   loading = true;
   isEditing = false;
-  activeTab: 'overview' | 'marketing' | 'agent' | 'skills' = 'overview';
+  activeTab: 'overview' | 'marketing' | 'agent' | 'skills' | 'files' = 'overview';
   form!: FormGroup;
 
   // Todos
@@ -794,6 +916,7 @@ export class ProjectDetailComponent implements OnInit {
         if (!this.project.presentation) this.project.presentation = '';
         this.updateParsedPresentation();
         this.initForm();
+        this.loadCoachMessages();
         this.loading = false;
       },
       error: () => { this.loading = false; },
@@ -1006,6 +1129,39 @@ export class ProjectDetailComponent implements OnInit {
     return this.sanitizer.bypassSecurityTrustHtml(html);
   }
 
+  private loadCoachMessages(): void {
+    if (!this.project?.coachMessages?.length) return;
+    this.messages = this.project.coachMessages.map(m => ({ ...m }));
+    this.parsedMessages = this.messages.map(m =>
+      m.role === 'assistant' ? this.parseMarkdown(this.stripActionBlocks(m.content)) : ''
+    );
+    this.scrollChat();
+  }
+
+  private stripActionBlocks(content: string): string {
+    return content.replace(/```coach-action\n[\s\S]*?\n```/g, '').trim();
+  }
+
+  private extractActions(content: string): CoachAction[] {
+    const actions: CoachAction[] = [];
+    const regex = /```coach-action\n([\s\S]*?)\n```/g;
+    let match;
+    while ((match = regex.exec(content)) !== null) {
+      try {
+        const data = JSON.parse(match[1].trim());
+        actions.push({
+          type: data.type,
+          items: data.items,
+          content: data.content,
+          field: data.field,
+          value: data.value,
+          status: 'pending',
+        });
+      } catch { /* skip malformed action blocks */ }
+    }
+    return actions;
+  }
+
   selectModel(model: AIModel): void {
     this.selectedModel = model;
     localStorage.setItem('ai-model', model);
@@ -1020,27 +1176,115 @@ export class ProjectDetailComponent implements OnInit {
     const text = this.userMessage.trim();
     if (!text || !this.project?._id || this.aiLoading) return;
 
-    this.messages.push({ role: 'user', content: text });
+    this.messages.push({ role: 'user', content: text, timestamp: new Date().toISOString() });
     this.parsedMessages.push('');
     this.userMessage = '';
     this.aiLoading = true;
     this.scrollChat();
 
-    this.projectService.aiCoach(this.project._id, this.messages, this.selectedModel).subscribe({
+    // Send clean messages to AI (role + content only)
+    const apiMessages = this.messages.map(m => ({ role: m.role, content: m.content }));
+
+    this.projectService.aiCoach(this.project._id, apiMessages, this.selectedModel).subscribe({
       next: (res) => {
-        this.messages.push({ role: 'assistant', content: res.response });
-        this.parsedMessages.push(this.parseMarkdown(res.response));
+        const actions = this.extractActions(res.response);
+        const msg: ChatMessage = {
+          role: 'assistant',
+          content: res.response,
+          actions: actions.length > 0 ? actions : undefined,
+          timestamp: new Date().toISOString(),
+        };
+        this.messages.push(msg);
+        this.parsedMessages.push(this.parseMarkdown(this.stripActionBlocks(res.response)));
         this.aiLoading = false;
         this.scrollChat();
+        this.saveCoachMessages();
       },
       error: (err) => {
         const errorMsg = err.error?.error || 'AI coaching failed. Check your API key configuration.';
-        this.messages.push({ role: 'assistant', content: errorMsg });
+        this.messages.push({ role: 'assistant', content: errorMsg, timestamp: new Date().toISOString() });
         this.parsedMessages.push(this.parseMarkdown(errorMsg));
         this.aiLoading = false;
         this.scrollChat();
+        this.saveCoachMessages();
       },
     });
+  }
+
+  private saveCoachMessages(): void {
+    if (!this.project?._id) return;
+    this.projectService.saveCoachMessages(this.project._id, this.messages).subscribe();
+  }
+
+  clearChat(): void {
+    if (!this.project?._id) return;
+    this.messages = [];
+    this.parsedMessages = [];
+    this.projectService.clearCoachMessages(this.project._id).subscribe();
+  }
+
+  getActionIcon(type: string): string {
+    switch (type) {
+      case 'add_todos': return 'checklist';
+      case 'update_presentation': return 'article';
+      case 'update_field': return 'edit_note';
+      default: return 'auto_fix_high';
+    }
+  }
+
+  getActionLabel(action: CoachAction): string {
+    switch (action.type) {
+      case 'add_todos': return `Add ${action.items?.length || 0} item(s) to TODO list`;
+      case 'update_presentation': return 'Update project presentation';
+      case 'update_field': return `Update ${action.field}`;
+      default: return 'Suggested action';
+    }
+  }
+
+  applyAction(msgIndex: number, actionIndex: number): void {
+    const action = this.messages[msgIndex].actions?.[actionIndex];
+    if (!action || !this.project?._id) return;
+
+    switch (action.type) {
+      case 'add_todos':
+        if (action.items) {
+          for (const item of action.items) {
+            this.project.todos.push({ text: item, done: false });
+          }
+          this.saveTodos();
+        }
+        break;
+      case 'update_presentation':
+        if (action.content) {
+          this.project.presentation = action.content;
+          this.updateParsedPresentation();
+          this.projectService.update(this.project._id, { presentation: action.content }).subscribe({
+            next: () => this.snackBar.open('Presentation updated', 'Close', { duration: 2000 }),
+            error: () => this.snackBar.open('Failed to update presentation', 'Close', { duration: 3000 }),
+          });
+        }
+        break;
+      case 'update_field':
+        if (action.field && action.value !== undefined) {
+          (this.project as any)[action.field] = action.value;
+          this.projectService.update(this.project._id, { [action.field]: action.value }).subscribe({
+            next: () => this.snackBar.open(`${action.field} updated`, 'Close', { duration: 2000 }),
+            error: () => this.snackBar.open(`Failed to update ${action.field}`, 'Close', { duration: 3000 }),
+          });
+        }
+        break;
+    }
+
+    action.status = 'accepted';
+    this.saveCoachMessages();
+    this.snackBar.open('Action applied!', 'Close', { duration: 2000 });
+  }
+
+  dismissAction(msgIndex: number, actionIndex: number): void {
+    const action = this.messages[msgIndex].actions?.[actionIndex];
+    if (!action) return;
+    action.status = 'rejected';
+    this.saveCoachMessages();
   }
 
   private scrollChat(): void {

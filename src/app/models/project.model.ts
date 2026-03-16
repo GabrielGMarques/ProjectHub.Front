@@ -23,9 +23,20 @@ export interface ProjectDocument {
   uploadedAt: string;
 }
 
+export interface CoachAction {
+  type: 'add_todos' | 'update_presentation' | 'update_field';
+  items?: string[];
+  content?: string;
+  field?: string;
+  value?: string;
+  status: 'pending' | 'accepted' | 'rejected';
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  actions?: CoachAction[];
+  timestamp?: string;
 }
 
 export type AIModel = 'claude-sonnet' | 'gpt-4o' | 'gemini-2.5-flash';
@@ -88,11 +99,15 @@ export interface AgentStep {
 
 export interface AgentSession {
   sessionId: string;
+  sdkSessionId?: string;
   type: 'marketing-research' | 'claude-code' | 'skill';
   status: 'running' | 'completed' | 'failed' | 'cancelled';
+  prompt?: string;
+  events?: ClaudeCodeEvent[];
   steps: AgentStep[];
   createdAt: string;
   completedAt?: string;
+  eventCount?: number;
 }
 
 // Claude Code Events
@@ -129,6 +144,8 @@ export interface Project {
   impact: 'low' | 'medium' | 'high';
   niche: string;
   timeConsumption: number;
+  timeSpent: number;
+  timeSpentPerDay: WeeklySchedule;
   todos: Todo[];
   presentation: string;
   monetizationPlan: string;
@@ -136,6 +153,7 @@ export interface Project {
   documents: ProjectDocument[];
   marketingResearch: MarketingResearch;
   agentSessions: AgentSession[];
+  coachMessages: ChatMessage[];
   sortOrder?: number;
   burndownSortOrder?: number;
   createdAt?: string;

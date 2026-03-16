@@ -9,7 +9,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { ProjectService } from '../../services/project.service';
-import { Project, Todo } from '../../models/project.model';
+import { Project, Todo, WeeklySchedule } from '../../models/project.model';
 
 interface ProjectGroup {
   project: Project;
@@ -18,6 +18,22 @@ interface ProjectGroup {
   doneTodos: number;
   progressPercent: number;
   weeklyHours: number;
+}
+
+interface ChartBar {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface ChartProject {
+  id: string;
+  name: string;
+  color: string;
+  estimatedBars: ChartBar[];
+  spentBars: ChartBar[];
+  visible: boolean;
 }
 
 const COLORS = [
@@ -57,29 +73,95 @@ const COLORS = [
           <p>Add todos to projects that have time allocated to see them here.</p>
         </div>
       } @else {
-        <!-- Global stats -->
-        <div class="stats-bar">
-          <div class="stat">
-            <span class="stat-value">{{ totalAll }}</span>
-            <span class="stat-label">Total</span>
+        <!-- Stats + Chart row -->
+        <div class="top-row" [class.chart-is-expanded]="chartExpanded">
+          <!-- Left: stats + progress -->
+          <div class="stats-col">
+            <div class="stats-grid">
+              <div class="stat">
+                <span class="stat-value">{{ totalAll }}</span>
+                <span class="stat-label">Total</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value done-value">{{ doneAll }}</span>
+                <span class="stat-label">Done</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value remaining-value">{{ totalAll - doneAll }}</span>
+                <span class="stat-label">Remaining</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value">{{ globalPercent | number:'1.0-0' }}%</span>
+                <span class="stat-label">Progress</span>
+              </div>
+            </div>
+            <div class="progress-row">
+              <div class="global-progress-track">
+                <div class="global-progress-fill" [style.width.%]="globalPercent"></div>
+              </div>
+            </div>
           </div>
-          <div class="stat">
-            <span class="stat-value done-value">{{ doneAll }}</span>
-            <span class="stat-label">Done</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value remaining-value">{{ totalAll - doneAll }}</span>
-            <span class="stat-label">Remaining</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value">{{ globalPercent | number:'1.0-0' }}%</span>
-            <span class="stat-label">Progress</span>
-          </div>
-        </div>
 
-        <!-- Global progress bar -->
-        <div class="global-progress-track">
-          <div class="global-progress-fill" [style.width.%]="globalPercent"></div>
+          <!-- Right: mini chart (or full-width when expanded) -->
+          <div class="chart-card" [class.chart-expanded]="chartExpanded">
+            <div class="chart-top">
+              <span class="chart-title">Daily Breakdown</span>
+              <div class="chart-legend">
+                @for (cp of chartProjects; track cp.id) {
+                  <button class="legend-btn" [class.legend-hidden]="!cp.visible" (click)="toggleChartProject(cp)">
+                    <span class="legend-swatch" [style.backgroundColor]="cp.color"></span>
+                    <span>{{ cp.name }}</span>
+                  </button>
+                }
+              </div>
+              <button class="chart-expand-btn" (click)="chartExpanded = !chartExpanded" [title]="chartExpanded ? 'Collapse' : 'Expand'">
+                <mat-icon>{{ chartExpanded ? 'close_fullscreen' : 'open_in_full' }}</mat-icon>
+              </button>
+            </div>
+            @if (chartExpanded) {
+              <div class="chart-subtitle">
+                <span class="chart-sub-item"><span class="sub-bar faded"></span> Allocated</span>
+                <span class="chart-sub-item"><span class="sub-bar filled"></span> Spent</span>
+              </div>
+            }
+            <svg viewBox="0 0 800 350" class="chart-svg" preserveAspectRatio="xMidYMid meet">
+              <!-- Horizontal grid -->
+              @for (tick of chartYTicks; track tick) {
+                <line [attr.x1]="55" [attr.y1]="yScale(tick)" [attr.x2]="785" [attr.y2]="yScale(tick)"
+                      stroke="var(--color-border-light)" stroke-dasharray="4,4" />
+                <text [attr.x]="48" [attr.y]="yScale(tick) + 4" text-anchor="end"
+                      fill="var(--color-text-subtle)" font-size="11" font-family="inherit">{{ tick }}h</text>
+              }
+              <!-- Vertical grid + day labels -->
+              @for (day of dayLabels; track $index) {
+                <line [attr.x1]="xPos($index)" [attr.y1]="15" [attr.x2]="xPos($index)" [attr.y2]="315"
+                      stroke="var(--color-border-light)" stroke-dasharray="2,4" opacity="0.5" />
+                <text [attr.x]="xPos($index)" y="335" text-anchor="middle"
+                      fill="var(--color-text-subtle)" font-size="12" font-family="inherit">{{ day }}</text>
+              }
+              <!-- Baseline -->
+              <line x1="55" y1="315" x2="785" y2="315" stroke="var(--color-border)" stroke-width="1" />
+              <!-- Project data (bars) -->
+              @for (cp of chartProjects; track cp.id) {
+                @if (cp.visible) {
+                  @for (bar of cp.estimatedBars; track $index) {
+                    @if (bar.height > 0) {
+                      <rect [attr.x]="bar.x" [attr.y]="bar.y" [attr.width]="bar.width" [attr.height]="bar.height"
+                            [attr.fill]="cp.color" opacity="0.25" rx="2" />
+                      <rect [attr.x]="bar.x" [attr.y]="bar.y" [attr.width]="bar.width" [attr.height]="bar.height"
+                            fill="none" [attr.stroke]="cp.color" stroke-width="1" stroke-dasharray="3,2" opacity="0.6" rx="2" />
+                    }
+                  }
+                  @for (bar of cp.spentBars; track $index) {
+                    @if (bar.height > 0) {
+                      <rect [attr.x]="bar.x" [attr.y]="bar.y" [attr.width]="bar.width" [attr.height]="bar.height"
+                            [attr.fill]="cp.color" opacity="0.7" rx="2" />
+                    }
+                  }
+                }
+              }
+            </svg>
+          </div>
         </div>
 
         <!-- Project groups (drag-drop) -->
@@ -122,6 +204,53 @@ const COLORS = [
                 </div>
               </div>
 
+              <!-- Day-by-day time tracker (collapsible) -->
+              <div class="day-tracker">
+                <button class="tracker-toggle" (click)="toggleTracker(group)">
+                  <mat-icon class="tracker-toggle-icon" [class.expanded]="expandedTrackers.has(group.project._id!)">expand_more</mat-icon>
+                  <span class="tracker-summary">
+                    <span class="tracker-summary-label">Time:</span>
+                    <span class="tracker-summary-spent" [class.over]="getDaySpentTotal(group) > group.weeklyHours">
+                      {{ getDaySpentTotal(group) | number:'1.0-1' }}h
+                    </span>
+                    <span class="tracker-summary-sep">/</span>
+                    <span class="tracker-summary-est">{{ group.weeklyHours }}h</span>
+                  </span>
+                </button>
+                @if (expandedTrackers.has(group.project._id!)) {
+                  <div class="day-tracker-grid">
+                    <div class="day-tracker-row header-row">
+                      <span class="day-tracker-label"></span>
+                      @for (day of dayLabels; track $index) {
+                        <span class="day-col-header">{{ day }}</span>
+                      }
+                      <span class="day-col-header total-col">Total</span>
+                    </div>
+                    <div class="day-tracker-row">
+                      <span class="day-tracker-label est-label">Est.</span>
+                      @for (key of dayKeys; track $index) {
+                        <span class="day-est-val">{{ getScheduleDay(group, key) }}</span>
+                      }
+                      <span class="day-est-val total-col">{{ group.weeklyHours }}</span>
+                    </div>
+                    <div class="day-tracker-row">
+                      <span class="day-tracker-label spent-label">Spent</span>
+                      @for (key of dayKeys; track $index) {
+                        <input
+                          class="day-input"
+                          type="number" min="0" step="0.5"
+                          [value]="getDaySpent(group, key)"
+                          (change)="updateDaySpent(group, key, $event)"
+                        />
+                      }
+                      <span class="day-spent-total total-col" [class.over]="getDaySpentTotal(group) > group.weeklyHours">
+                        {{ getDaySpentTotal(group) | number:'1.0-1' }}
+                      </span>
+                    </div>
+                  </div>
+                }
+              </div>
+
               <div class="todo-list">
                 <ng-container
                   *ngTemplateOutlet="todoListTpl; context: { $implicit: group.project.todos, path: [], group: group, depth: 0 }"
@@ -135,7 +264,21 @@ const COLORS = [
       <!-- Recursive todo template -->
       <ng-template #todoListTpl let-todos let-path="path" let-group="group" let-depth="depth">
         @for (todo of todos; track $index) {
-          <div class="todo-row" [class.done]="todo.done" [style.paddingLeft.px]="depth * 24">
+          <div
+            class="todo-row"
+            [class.done]="todo.done"
+            [class.drag-over]="todoDragOver === makeKey(group, path.concat($index))"
+            [style.paddingLeft.px]="depth * 24"
+            draggable="true"
+            (dragstart)="onTodoDragStart($event, group, path.concat($index))"
+            (dragover)="onTodoDragOver($event, group, path.concat($index))"
+            (dragleave)="onTodoDragLeave($event)"
+            (drop)="onTodoDrop($event, group, path.concat($index))"
+            (dragend)="onTodoDragEnd()"
+          >
+            <div class="todo-drag-handle">
+              <mat-icon>drag_indicator</mat-icon>
+            </div>
             <mat-checkbox
               [checked]="todo.done"
               (change)="toggleTodo(group, path.concat($index))"
@@ -229,22 +372,48 @@ const COLORS = [
       color: var(--color-border);
     }
 
-    /* Stats */
-    .stats-bar {
+    /* Top row: stats + chart side-by-side */
+    .top-row {
       display: flex;
       gap: 1rem;
       margin-bottom: 1rem;
+      align-items: stretch;
+    }
+    .top-row.chart-is-expanded {
+      flex-direction: column;
+    }
+    .stats-col {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 0;
+    }
+    .top-row:not(.chart-is-expanded) .stats-col {
+      flex: 1 1 0;
+    }
+    .top-row:not(.chart-is-expanded) .chart-card {
+      flex: 1 1 0;
+    }
+
+    /* Stats */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+      flex: 1;
     }
     .stat {
       flex: 1;
       background: var(--color-bg-card);
       border: 1px solid var(--color-border-light);
       border-radius: var(--radius-md);
-      padding: 1rem;
+      padding: 1rem 0.75rem;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 2px;
+      justify-content: center;
+      gap: 4px;
     }
     .stat-value {
       font-size: 1.5rem;
@@ -254,7 +423,7 @@ const COLORS = [
     .done-value { color: #22C55E; }
     .remaining-value { color: var(--color-primary); }
     .stat-label {
-      font-size: 0.78rem;
+      font-size: 0.72rem;
       color: var(--color-text-subtle);
       font-weight: 500;
       text-transform: uppercase;
@@ -262,12 +431,17 @@ const COLORS = [
     }
 
     /* Global progress */
+    .progress-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
     .global-progress-track {
-      height: 8px;
+      flex: 1;
+      height: 6px;
       background: var(--color-border-light);
       border-radius: 100px;
       overflow: hidden;
-      margin-bottom: 1.5rem;
     }
     .global-progress-fill {
       height: 100%;
@@ -371,6 +545,216 @@ const COLORS = [
       transition: width 0.4s ease;
     }
 
+    /* Burndown chart */
+    .chart-card {
+      flex: 1;
+      min-width: 0;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border-light);
+      border-radius: var(--radius-md);
+      padding: 0.5rem 0.75rem;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+    }
+    .chart-card .chart-svg {
+      flex: 1;
+      min-height: 0;
+    }
+    .chart-card.chart-expanded {
+      padding: 1rem 1.25rem;
+    }
+    .chart-top {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .chart-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--color-text);
+      margin-right: auto;
+    }
+    .chart-expand-btn {
+      background: none;
+      border: 1px solid var(--color-border-light);
+      border-radius: var(--radius-sm);
+      padding: 2px;
+      cursor: pointer;
+      color: var(--color-text-subtle);
+      display: flex;
+      align-items: center;
+      transition: color var(--transition), border-color var(--transition);
+      flex-shrink: 0;
+    }
+    .chart-expand-btn:hover {
+      color: var(--color-primary);
+      border-color: var(--color-primary);
+    }
+    .chart-expand-btn mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+    }
+    .chart-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .legend-btn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: none;
+      border: 1px solid var(--color-border-light);
+      border-radius: 100px;
+      padding: 3px 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--color-text);
+      cursor: pointer;
+      transition: opacity var(--transition), border-color var(--transition);
+      font-family: inherit;
+    }
+    .legend-btn:hover { border-color: var(--color-border); }
+    .legend-btn.legend-hidden { opacity: 0.35; }
+    .legend-swatch {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .chart-subtitle {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 8px;
+    }
+    .chart-sub-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.72rem;
+      color: var(--color-text-subtle);
+      font-weight: 500;
+    }
+    .sub-bar {
+      width: 12px;
+      height: 10px;
+      border-radius: 2px;
+      background: var(--color-text-subtle);
+    }
+    .sub-bar.faded { opacity: 0.3; border: 1px dashed var(--color-text-subtle); background: transparent; }
+    .sub-bar.filled { opacity: 0.75; }
+    .chart-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* Day tracker */
+    .day-tracker {
+      background: var(--color-bg);
+      border-radius: var(--radius-sm);
+      padding: 6px 10px;
+      margin-bottom: 10px;
+    }
+    .tracker-toggle {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 2px 0;
+      width: 100%;
+      font-family: inherit;
+      color: var(--color-text-subtle);
+      transition: color var(--transition);
+    }
+    .tracker-toggle:hover { color: var(--color-text); }
+    .tracker-toggle-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      transition: transform 0.2s ease;
+      transform: rotate(-90deg);
+    }
+    .tracker-toggle-icon.expanded { transform: rotate(0deg); }
+    .tracker-summary {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+    .tracker-summary-label { color: var(--color-text-subtle); }
+    .tracker-summary-spent { color: #22C55E; }
+    .tracker-summary-spent.over { color: #EF4444; }
+    .tracker-summary-sep { color: var(--color-text-subtle); opacity: 0.5; }
+    .tracker-summary-est { color: var(--color-text-subtle); }
+    .day-tracker-grid { margin-top: 6px; }
+    .day-tracker-row {
+      display: grid;
+      grid-template-columns: 40px repeat(7, 1fr) 44px;
+      gap: 3px;
+      align-items: center;
+      margin-bottom: 2px;
+    }
+    .day-tracker-row:last-child { margin-bottom: 0; }
+    .day-col-header {
+      text-align: center;
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--color-text-subtle);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .day-tracker-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--color-text-subtle);
+    }
+    .est-label { color: var(--color-text-subtle); }
+    .spent-label { color: var(--color-primary); }
+    .day-est-val {
+      text-align: center;
+      font-size: 0.72rem;
+      color: var(--color-text-subtle);
+      font-weight: 500;
+    }
+    .day-input {
+      width: 100%;
+      min-width: 0;
+      text-align: center;
+      border: 1px solid var(--color-border-light);
+      border-radius: var(--radius-sm);
+      padding: 3px 2px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: transparent;
+      color: var(--color-text);
+      font-family: inherit;
+      outline: none;
+      -moz-appearance: textfield;
+    }
+    .day-input::-webkit-inner-spin-button,
+    .day-input::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .day-input:focus { border-color: var(--color-primary); }
+    .total-col {
+      text-align: center;
+      font-weight: 700;
+      font-size: 0.75rem;
+    }
+    .day-spent-total {
+      color: #22C55E;
+    }
+    .day-spent-total.over { color: #EF4444; }
+
     /* Todos */
     .todo-list {
       display: flex;
@@ -429,6 +813,24 @@ const COLORS = [
     .group-sort-btn.disabled {
       pointer-events: none;
       opacity: 0.2;
+    }
+    .todo-drag-handle {
+      cursor: grab;
+      color: var(--color-text-subtle);
+      display: flex;
+      align-items: center;
+      opacity: 0;
+      transition: opacity var(--transition);
+    }
+    .todo-drag-handle mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+    }
+    .todo-row:hover .todo-drag-handle { opacity: 0.4; }
+    .todo-drag-handle:hover { opacity: 1 !important; }
+    .todo-row.drag-over {
+      border-top: 2px solid var(--color-primary);
     }
     .todo-action-btn,
     .todo-delete-btn {
@@ -499,6 +901,8 @@ export class BurndownComponent implements OnInit {
   doneAll = 0;
   editingKey: string | null = null;
   editingText = '';
+  chartExpanded = false;
+  expandedTrackers = new Set<string>();
 
   get globalPercent(): number {
     return this.totalAll > 0 ? (this.doneAll / this.totalAll) * 100 : 0;
@@ -519,12 +923,167 @@ export class BurndownComponent implements OnInit {
           return aOrder - bOrder;
         });
         this.groups = active.map((project, idx) => this.buildGroup(project, idx));
+        // Default chart: only first project visible
+        this.groups.forEach((g, i) => {
+          if (i > 0) this.hiddenProjects.add(g.project._id!);
+        });
         this.recalcGlobal();
+        this.buildChart();
         this.loading = false;
       },
       error: () => {
         this.snackBar.open('Failed to load projects', 'Close', { duration: 3000 });
         this.loading = false;
+      },
+    });
+  }
+
+  // --- Chart ---
+
+  readonly dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  readonly dayKeys: (keyof WeeklySchedule)[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+  chartProjects: ChartProject[] = [];
+  chartYTicks: number[] = [];
+  private chartTopY = 1;
+  private hiddenProjects = new Set<string>();
+
+  // Chart coordinate helpers
+  xPos(i: number): number { return 55 + i * (730 / 6); }
+  yScale(v: number): number { return 315 - (v / this.chartTopY) * 300; }
+
+  toggleTracker(group: ProjectGroup): void {
+    const id = group.project._id!;
+    if (this.expandedTrackers.has(id)) {
+      this.expandedTrackers.delete(id);
+    } else {
+      this.expandedTrackers.add(id);
+    }
+  }
+
+  toggleChartProject(cp: ChartProject): void {
+    cp.visible = !cp.visible;
+    if (cp.visible) {
+      this.hiddenProjects.delete(cp.id);
+    } else {
+      this.hiddenProjects.add(cp.id);
+    }
+    this.buildChart();
+  }
+
+  private buildChart(): void {
+    const visibleGroups = this.groups.filter(g => !this.hiddenProjects.has(g.project._id!));
+    const visibleCount = visibleGroups.length;
+
+    const projectData = this.groups.map(g => {
+      const estDaily: number[] = [];
+      const spentDaily: number[] = [];
+      for (const key of this.dayKeys) {
+        estDaily.push((g.project.schedule as any)?.[key] || 0);
+        spentDaily.push((g.project.timeSpentPerDay as any)?.[key] || 0);
+      }
+      return { group: g, estDaily, spentDaily };
+    });
+
+    const visibleData = projectData.filter(pd => !this.hiddenProjects.has(pd.group.project._id!));
+    const allValues = visibleData.flatMap(pd => [...pd.estDaily, ...pd.spentDaily]);
+    const maxVal = allValues.length > 0 ? Math.max(...allValues) : 1;
+
+    this.chartYTicks = this.computeYTicks(maxVal);
+    this.chartTopY = this.chartYTicks[this.chartYTicks.length - 1] || 1;
+
+    // Bar layout: for each day slot, group bars by project (estimated + spent side by side)
+    const daySlotWidth = 730 / 7; // total width / 7 days
+    const groupWidth = visibleCount > 0 ? (daySlotWidth * 0.8) / visibleCount : daySlotWidth * 0.8;
+    const barWidth = Math.min(groupWidth / 2 - 1, 28);
+
+    let visibleIndex = 0;
+    const visibleIndexMap = new Map<string, number>();
+    for (const g of visibleGroups) {
+      visibleIndexMap.set(g.project._id!, visibleIndex++);
+    }
+
+    this.chartProjects = projectData.map(pd => {
+      const id = pd.group.project._id!;
+      const visible = !this.hiddenProjects.has(id);
+      const vIdx = visibleIndexMap.get(id) ?? 0;
+
+      const estimatedBars: ChartBar[] = [];
+      const spentBars: ChartBar[] = [];
+
+      for (let i = 0; i < 7; i++) {
+        const dayCenterX = this.xPos(i);
+        const totalGroupsWidth = visibleCount > 0 ? groupWidth * visibleCount : groupWidth;
+        const groupStartX = dayCenterX - totalGroupsWidth / 2 + vIdx * groupWidth;
+
+        const estVal = pd.estDaily[i];
+        const spentVal = pd.spentDaily[i];
+
+        estimatedBars.push({
+          x: groupStartX,
+          y: this.yScale(estVal),
+          width: barWidth,
+          height: 315 - this.yScale(estVal),
+        });
+
+        spentBars.push({
+          x: groupStartX + barWidth + 1,
+          y: this.yScale(spentVal),
+          width: barWidth,
+          height: 315 - this.yScale(spentVal),
+        });
+      }
+
+      return {
+        id,
+        name: pd.group.project.name,
+        color: pd.group.color,
+        estimatedBars,
+        spentBars,
+        visible,
+      };
+    });
+  }
+
+  private computeYTicks(maxVal: number): number[] {
+    if (maxVal <= 0) return [0, 1];
+    const step = maxVal <= 5 ? 1 : maxVal <= 10 ? 2 : Math.ceil(maxVal / 5);
+    const ticks: number[] = [];
+    for (let v = 0; v <= maxVal; v += step) ticks.push(v);
+    if (ticks[ticks.length - 1] < maxVal) ticks.push(ticks[ticks.length - 1] + step);
+    return ticks;
+  }
+
+  // --- Day tracker ---
+
+  getScheduleDay(group: ProjectGroup, key: string): number {
+    return (group.project.schedule as any)?.[key] || 0;
+  }
+
+  getDaySpent(group: ProjectGroup, key: string): number {
+    return (group.project.timeSpentPerDay as any)?.[key] || 0;
+  }
+
+  getDaySpentTotal(group: ProjectGroup): number {
+    const s = group.project.timeSpentPerDay;
+    if (!s) return 0;
+    return (s.monday || 0) + (s.tuesday || 0) + (s.wednesday || 0)
+      + (s.thursday || 0) + (s.friday || 0) + (s.saturday || 0) + (s.sunday || 0);
+  }
+
+  updateDaySpent(group: ProjectGroup, key: string, event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const value = Math.max(0, parseFloat(input.value) || 0);
+    if (!group.project.timeSpentPerDay) {
+      group.project.timeSpentPerDay = { monday: 0, tuesday: 0, wednesday: 0, thursday: 0, friday: 0, saturday: 0, sunday: 0 };
+    }
+    const old = (group.project.timeSpentPerDay as any)[key] || 0;
+    (group.project.timeSpentPerDay as any)[key] = value;
+    this.buildChart();
+    this.projectService.update(group.project._id!, { timeSpentPerDay: group.project.timeSpentPerDay }).subscribe({
+      error: () => {
+        (group.project.timeSpentPerDay as any)[key] = old;
+        this.buildChart();
+        this.snackBar.open('Failed to save', 'Close', { duration: 3000 });
       },
     });
   }
@@ -831,6 +1390,62 @@ export class BurndownComponent implements OnInit {
       stack.push({ todo, indent });
     }
     return result;
+  }
+
+  // --- Todo drag-drop reorder ---
+
+  todoDragOver: string | null = null;
+  private dragSourceGroup: ProjectGroup | null = null;
+  private dragSourcePath: number[] = [];
+
+  onTodoDragStart(event: DragEvent, group: ProjectGroup, path: number[]): void {
+    this.dragSourceGroup = group;
+    this.dragSourcePath = path;
+    event.dataTransfer!.effectAllowed = 'move';
+    event.dataTransfer!.setData('text/plain', '');
+  }
+
+  onTodoDragOver(event: DragEvent, group: ProjectGroup, path: number[]): void {
+    if (!this.dragSourceGroup || this.dragSourceGroup !== group) return;
+    // Only allow reorder within same parent level
+    const srcParent = this.dragSourcePath.slice(0, -1).join('-');
+    const tgtParent = path.slice(0, -1).join('-');
+    if (srcParent !== tgtParent) return;
+    event.preventDefault();
+    event.dataTransfer!.dropEffect = 'move';
+    this.todoDragOver = this.makeKey(group, path);
+  }
+
+  onTodoDragLeave(event: DragEvent): void {
+    this.todoDragOver = null;
+  }
+
+  onTodoDrop(event: DragEvent, group: ProjectGroup, path: number[]): void {
+    event.preventDefault();
+    this.todoDragOver = null;
+    if (!this.dragSourceGroup || this.dragSourceGroup !== group) return;
+    const srcParent = this.dragSourcePath.slice(0, -1).join('-');
+    const tgtParent = path.slice(0, -1).join('-');
+    if (srcParent !== tgtParent) return;
+
+    const list = this.getParentList(group.project.todos, path);
+    const fromIdx = this.dragSourcePath[this.dragSourcePath.length - 1];
+    const toIdx = path[path.length - 1];
+    if (fromIdx === toIdx) return;
+
+    const [moved] = list.splice(fromIdx, 1);
+    list.splice(toIdx, 0, moved);
+    this.saveTodos(group, () => {
+      // rollback
+      const [item] = list.splice(toIdx, 1);
+      list.splice(fromIdx, 0, item);
+    });
+  }
+
+  onTodoDragEnd(): void {
+    this.todoDragOver = null;
+    this.dragSourceGroup = null;
+    this.dragSourcePath = [];
   }
 
   // --- Move group (reorder) ---

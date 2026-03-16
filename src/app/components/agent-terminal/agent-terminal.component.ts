@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, ViewChild, ElementRef } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
@@ -7,7 +7,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { marked } from 'marked';
-import { ClaudeCodeService } from '../../services/claude-code.service';
+import { ClaudeCodeService, AgentSessionSummary } from '../../services/claude-code.service';
 import { Project, ClaudeCodeEvent } from '../../models/project.model';
 
 interface TerminalEntry {
@@ -31,12 +31,41 @@ interface TerminalEntry {
             {{ isAvailable ? 'Available' : 'Not Available' }}
           </span>
         </div>
-        @if (isRunning) {
-          <button class="cancel-btn" (click)="cancel()">
-            <mat-icon>stop</mat-icon> Stop
-          </button>
-        }
+        <div class="header-right">
+          @if (isRunning) {
+            <button class="cancel-btn" (click)="cancel()">
+              <mat-icon>stop</mat-icon> Stop
+            </button>
+          }
+          @if (project.localPath) {
+            <button class="history-btn" [class.active]="showHistory" (click)="toggleHistory()" matTooltip="Session history">
+              <mat-icon>history</mat-icon>
+            </button>
+          }
+        </div>
       </div>
+
+      @if (showHistory && pastSessions.length > 0) {
+        <div class="session-list">
+          @for (s of pastSessions; track s.sessionId) {
+            <button class="session-item" (click)="loadSession(s)" [class.active]="activeHistorySessionId === s.sessionId">
+              <div class="session-meta">
+                <span class="session-status" [class]="s.status">{{ s.status }}</span>
+                <span class="session-date">{{ s.createdAt | date:'short' }}</span>
+              </div>
+              <div class="session-prompt">{{ s.prompt || 'No prompt' }}</div>
+              <div class="session-events">{{ s.eventCount }} events</div>
+              @if (s.sdkSessionId) {
+                <button class="resume-btn" (click)="resumeSession(s, $event)" matTooltip="Continue this conversation">
+                  <mat-icon>replay</mat-icon>
+                </button>
+              }
+            </button>
+          }
+        </div>
+      } @else if (showHistory) {
+        <div class="session-list empty">No past sessions</div>
+      }
 
       @if (!project.localPath) {
         <div class="setup-notice">
@@ -89,10 +118,15 @@ interface TerminalEntry {
           <span class="prompt-icon">&gt;</span>
           <input
             [(ngModel)]="userPrompt"
-            placeholder="Tell the agent what to do..."
+            [placeholder]="resumingSdkSessionId ? 'Continue the conversation...' : 'Tell the agent what to do...'"
             (keydown.enter)="run()"
             [disabled]="isRunning || !isAvailable"
           />
+          @if (resumingSdkSessionId) {
+            <button class="resume-badge" (click)="clearResume()" matTooltip="Click to start fresh">
+              <mat-icon>replay</mat-icon> Resuming
+            </button>
+          }
           <button class="send-btn" (click)="run()" [disabled]="!userPrompt.trim() || isRunning || !isAvailable">
             <mat-icon>play_arrow</mat-icon>
           </button>
@@ -106,11 +140,35 @@ interface TerminalEntry {
     .header-left { display: flex; align-items: center; gap: 10px; }
     .header-left h3 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 1.1rem; font-weight: 700; color: var(--color-text); }
     .header-left h3 mat-icon { color: var(--color-primary); }
+    .header-right { display: flex; align-items: center; gap: 8px; }
     .status-badge { font-size: .7rem; font-weight: 700; padding: 3px 10px; border-radius: 100px; text-transform: uppercase; }
     .status-badge.available { background: rgba(34,197,94,.1); color: var(--color-success); }
     .status-badge.unavailable { background: rgba(239,68,68,.1); color: var(--color-danger); }
     .cancel-btn { display: flex; align-items: center; gap: 4px; padding: 6px 12px; border: 1px solid var(--color-danger); border-radius: var(--radius-sm); background: none; color: var(--color-danger); font-family: inherit; font-size: .8rem; font-weight: 600; cursor: pointer; }
     .cancel-btn mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .history-btn { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); background: none; color: var(--color-text-subtle); cursor: pointer; }
+    .history-btn:hover, .history-btn.active { border-color: var(--color-primary); color: var(--color-primary); }
+    .history-btn mat-icon { font-size: 18px; width: 18px; height: 18px; }
+
+    .session-list { background: #0d1117; border: 1px solid var(--color-border-light); border-radius: var(--radius-md); padding: 6px; max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+    .session-list.empty { padding: 1rem; text-align: center; color: #8b949e; font-size: .82rem; }
+    .session-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid transparent; border-radius: var(--radius-sm); background: #161b22; color: #c9d1d9; font-family: inherit; font-size: .78rem; cursor: pointer; text-align: left; width: 100%; }
+    .session-item:hover { border-color: var(--color-border-light); }
+    .session-item.active { border-color: var(--color-primary); background: rgba(212,175,55,.06); }
+    .session-meta { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; min-width: 80px; }
+    .session-status { font-size: .65rem; font-weight: 700; text-transform: uppercase; }
+    .session-status.completed { color: var(--color-success); }
+    .session-status.failed { color: var(--color-danger); }
+    .session-status.cancelled { color: var(--color-warning); }
+    .session-date { font-size: .65rem; color: #8b949e; }
+    .session-prompt { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .session-events { font-size: .65rem; color: #8b949e; flex-shrink: 0; }
+    .resume-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); background: none; color: var(--color-text-subtle); cursor: pointer; flex-shrink: 0; }
+    .resume-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    .resume-btn mat-icon { font-size: 16px; width: 16px; height: 16px; }
+
+    .resume-badge { display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--color-primary); border-radius: var(--radius-sm); background: rgba(212,175,55,.1); color: var(--color-primary); font-family: inherit; font-size: .7rem; font-weight: 600; cursor: pointer; flex-shrink: 0; }
+    .resume-badge mat-icon { font-size: 14px; width: 14px; height: 14px; }
 
     .setup-notice { display: flex; gap: 12px; padding: 1rem; background: rgba(234,179,8,.06); border: 1px solid rgba(234,179,8,.2); border-radius: var(--radius-md); color: var(--color-text); font-size: .85rem; }
     .setup-notice mat-icon { color: var(--color-warning); flex-shrink: 0; margin-top: 2px; }
@@ -152,7 +210,7 @@ interface TerminalEntry {
     .send-btn mat-icon { font-size: 18px; width: 18px; height: 18px; }
   `],
 })
-export class AgentTerminalComponent implements OnInit {
+export class AgentTerminalComponent implements OnInit, OnDestroy {
   @Input() project!: Project;
   @ViewChild('terminalOutput') terminalOutput!: ElementRef;
 
@@ -160,7 +218,12 @@ export class AgentTerminalComponent implements OnInit {
   isRunning = false;
   userPrompt = '';
   entries: TerminalEntry[] = [];
+  showHistory = false;
+  pastSessions: AgentSessionSummary[] = [];
+  activeHistorySessionId = '';
+  resumingSdkSessionId = '';
   private currentSessionId = '';
+  private runSubscription: any = null;
 
   constructor(
     private claudeCodeService: ClaudeCodeService,
@@ -175,6 +238,58 @@ export class AgentTerminalComponent implements OnInit {
     });
   }
 
+  toggleHistory(): void {
+    this.showHistory = !this.showHistory;
+    if (this.showHistory && this.project._id) {
+      this.claudeCodeService.getSessions(this.project._id).subscribe({
+        next: (sessions) => { this.pastSessions = sessions; },
+        error: () => { this.pastSessions = []; },
+      });
+    }
+  }
+
+  loadSession(session: AgentSessionSummary): void {
+    if (!this.project._id) return;
+    this.activeHistorySessionId = session.sessionId;
+    this.claudeCodeService.getSession(this.project._id, session.sessionId).subscribe({
+      next: (full) => {
+        this.entries = [];
+        // Replay stored events into the terminal
+        if (full.prompt) {
+          this.entries.push({ type: 'input', content: full.prompt, timestamp: new Date(full.createdAt) });
+        }
+        for (const event of full.events || []) {
+          if (event.type === 'text' && event.content) {
+            const html = this.sanitizer.bypassSecurityTrustHtml(marked.parse(event.content) as string);
+            this.entries.push({ type: 'text', content: event.content, html, timestamp: new Date() });
+          } else if (event.type === 'tool_use') {
+            this.entries.push({ type: 'tool_use', content: event.content || '', tool: event.tool, timestamp: new Date() });
+          } else if (event.type === 'tool_result') {
+            this.entries.push({ type: 'tool_result', content: event.content || '', timestamp: new Date() });
+          } else if (event.type === 'error') {
+            this.entries.push({ type: 'error', content: event.content || '', timestamp: new Date() });
+          }
+        }
+        this.entries.push({ type: 'system', content: `Session ${full.status} - ${new Date(full.createdAt).toLocaleString()}`, timestamp: new Date() });
+        this.showHistory = false;
+        this.scrollBottom();
+      },
+    });
+  }
+
+  resumeSession(session: AgentSessionSummary, event: Event): void {
+    event.stopPropagation();
+    if (!session.sdkSessionId) return;
+    this.resumingSdkSessionId = session.sdkSessionId;
+    this.showHistory = false;
+    // Load the past session first, then user can type a follow-up
+    this.loadSession(session);
+  }
+
+  clearResume(): void {
+    this.resumingSdkSessionId = '';
+  }
+
   runQuick(prompt: string): void {
     this.userPrompt = prompt;
     this.run();
@@ -187,9 +302,13 @@ export class AgentTerminalComponent implements OnInit {
     this.entries.push({ type: 'input', content: prompt, timestamp: new Date() });
     this.userPrompt = '';
     this.isRunning = true;
+    this.activeHistorySessionId = '';
     this.scrollBottom();
 
-    this.claudeCodeService.runAgent(this.project._id, prompt).subscribe({
+    const sdkSessionId = this.resumingSdkSessionId || undefined;
+    this.resumingSdkSessionId = '';
+
+    this.runSubscription = this.claudeCodeService.runAgent(this.project._id, prompt, sdkSessionId).subscribe({
       next: (event: ClaudeCodeEvent) => {
         if (event.sessionId) this.currentSessionId = event.sessionId;
 
@@ -208,16 +327,34 @@ export class AgentTerminalComponent implements OnInit {
       error: (err) => {
         this.entries.push({ type: 'error', content: err.message || 'Connection failed', timestamp: new Date() });
         this.isRunning = false;
+        this.runSubscription = null;
       },
       complete: () => {
         this.isRunning = false;
+        this.runSubscription = null;
         this.entries.push({ type: 'system', content: 'Agent finished.', timestamp: new Date() });
         this.scrollBottom();
       },
     });
   }
 
+  ngOnDestroy(): void {
+    if (this.isRunning) {
+      if (this.runSubscription) {
+        this.runSubscription.unsubscribe();
+        this.runSubscription = null;
+      }
+      if (this.currentSessionId) {
+        this.claudeCodeService.cancelAgent(this.currentSessionId).subscribe();
+      }
+    }
+  }
+
   cancel(): void {
+    if (this.runSubscription) {
+      this.runSubscription.unsubscribe();
+      this.runSubscription = null;
+    }
     if (this.currentSessionId) {
       this.claudeCodeService.cancelAgent(this.currentSessionId).subscribe();
     }

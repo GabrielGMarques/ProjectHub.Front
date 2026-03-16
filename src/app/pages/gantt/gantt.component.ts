@@ -3,11 +3,13 @@ import { CommonModule } from '@angular/common';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { ProjectService } from '../../services/project.service';
+import { Project, WeeklySchedule } from '../../models/project.model';
 
 interface TimeData {
   projectId: string;
   name: string;
-  timeConsumption: number;
+  scheduled: number;
+  timeSpent: number;
   color: string;
   percentage: number;
 }
@@ -35,13 +37,13 @@ const COLORS = [
       } @else if (data.length === 0) {
         <div class="empty-state">
           <h2>No project data available</h2>
-          <p>Add projects with time consumption to see the chart.</p>
+          <p>Add projects with scheduled time to see the chart.</p>
         </div>
       } @else {
         <div class="chart-container">
           <div class="chart-header">
             <span class="chart-title">Weekly Hours Distribution</span>
-            <span class="total-badge">{{ totalHours }}h / week</span>
+            <span class="total-badge">{{ totalScheduled }}h / week</span>
           </div>
 
           <!-- Bar chart -->
@@ -55,8 +57,14 @@ const COLORS = [
                     [style.width.%]="item.percentage"
                     [style.backgroundColor]="item.color"
                   >
-                    <span class="bar-text">{{ item.timeConsumption }}h ({{ item.percentage | number:'1.0-1' }}%)</span>
+                    <span class="bar-text">{{ item.scheduled }}h ({{ item.percentage | number:'1.0-1' }}%)</span>
                   </div>
+                  @if (item.timeSpent > 0) {
+                    <div
+                      class="gantt-bar spent-overlay"
+                      [style.width.%]="totalScheduled > 0 ? (item.timeSpent / totalScheduled) * 100 : 0"
+                    ></div>
+                  }
                 </div>
               </div>
             }
@@ -67,9 +75,9 @@ const COLORS = [
             @for (item of data; track item.projectId) {
               <div
                 class="stacked-segment"
-                [style.flex]="item.timeConsumption"
+                [style.flex]="item.scheduled"
                 [style.backgroundColor]="item.color"
-                [title]="item.name + ': ' + item.timeConsumption + 'h'"
+                [title]="item.name + ': ' + item.scheduled + 'h'"
               ></div>
             }
           </div>
@@ -80,7 +88,12 @@ const COLORS = [
               <div class="legend-item">
                 <span class="legend-dot" [style.backgroundColor]="item.color"></span>
                 <span class="legend-text">{{ item.name }}</span>
-                <span class="legend-hours">{{ item.timeConsumption }}h</span>
+                <span class="legend-hours">{{ item.scheduled }}h</span>
+                @if (item.timeSpent > 0) {
+                  <span class="legend-spent" [class.over]="item.timeSpent > item.scheduled">
+                    ({{ item.timeSpent }}h spent)
+                  </span>
+                }
               </div>
             }
           </div>
@@ -178,6 +191,7 @@ const COLORS = [
       border-radius: var(--radius-sm);
       overflow: hidden;
       height: 32px;
+      position: relative;
     }
     .gantt-bar {
       height: 100%;
@@ -187,6 +201,15 @@ const COLORS = [
       padding: 0 12px;
       transition: width 0.5s ease;
       min-width: fit-content;
+    }
+    .spent-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.25);
+      border-right: 2px solid rgba(255, 255, 255, 0.7);
+      pointer-events: none;
     }
     .bar-text {
       color: white;
@@ -236,11 +259,19 @@ const COLORS = [
       color: var(--color-text-subtle);
       font-weight: 600;
     }
+    .legend-spent {
+      font-size: 0.75rem;
+      color: #22C55E;
+      font-weight: 600;
+    }
+    .legend-spent.over {
+      color: #EF4444;
+    }
   `],
 })
 export class GanttComponent implements OnInit {
   data: TimeData[] = [];
-  totalHours = 0;
+  totalScheduled = 0;
   loading = true;
 
   constructor(
@@ -249,16 +280,23 @@ export class GanttComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.projectService.getTimeAllocation().subscribe({
-      next: (items) => {
-        this.totalHours = items.reduce((sum, i) => sum + i.timeConsumption, 0);
-        this.data = items
-          .filter((i) => i.timeConsumption > 0)
-          .map((item, idx) => ({
-            ...item,
-            color: COLORS[idx % COLORS.length],
-            percentage: this.totalHours > 0 ? (item.timeConsumption / this.totalHours) * 100 : 0,
-          }));
+    this.projectService.getAll().subscribe({
+      next: (projects) => {
+        const items = projects
+          .map(p => ({
+            projectId: p._id!,
+            name: p.name,
+            scheduled: this.calcWeeklyHours(p.schedule),
+            timeSpent: p.timeSpent || 0,
+          }))
+          .filter(i => i.scheduled > 0);
+
+        this.totalScheduled = items.reduce((sum, i) => sum + i.scheduled, 0);
+        this.data = items.map((item, idx) => ({
+          ...item,
+          color: COLORS[idx % COLORS.length],
+          percentage: this.totalScheduled > 0 ? (item.scheduled / this.totalScheduled) * 100 : 0,
+        }));
         this.loading = false;
       },
       error: () => {
@@ -266,5 +304,11 @@ export class GanttComponent implements OnInit {
         this.loading = false;
       },
     });
+  }
+
+  private calcWeeklyHours(s: WeeklySchedule): number {
+    if (!s) return 0;
+    return (s.monday || 0) + (s.tuesday || 0) + (s.wednesday || 0)
+      + (s.thursday || 0) + (s.friday || 0) + (s.saturday || 0) + (s.sunday || 0);
   }
 }

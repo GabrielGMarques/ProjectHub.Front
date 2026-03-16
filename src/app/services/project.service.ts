@@ -56,12 +56,41 @@ export class ProjectService {
     return this.http.post<{ response: string }>(`${this.apiUrl}/${projectId}/ai/coach`, { messages, model });
   }
 
+  saveCoachMessages(projectId: string, messages: ChatMessage[]): Observable<void> {
+    return this.http.put<void>(`${this.apiUrl}/${projectId}/ai/coach/messages`, { messages });
+  }
+
+  clearCoachMessages(projectId: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/${projectId}/ai/coach/messages`);
+  }
+
   browseFolders(folderPath?: string): Observable<{ current: string; parent: string | null; entries: { name: string; path: string; isDir: boolean }[] }> {
     const params: Record<string, string> = {};
     if (folderPath) params['path'] = folderPath;
     return this.http.get<{ current: string; parent: string | null; entries: { name: string; path: string; isDir: boolean }[] }>(
       `${this.apiUrl}/browse-folders`, { params }
     );
+  }
+
+  listFiles(projectId: string, dirPath?: string): Observable<{
+    current: string; parent: string | null;
+    entries: { name: string; path: string; isDir: boolean; size?: number; ext?: string }[]
+  }> {
+    const params: Record<string, string> = {};
+    if (dirPath) params['path'] = dirPath;
+    return this.http.get<any>(`${this.apiUrl}/${projectId}/files/list`, { params });
+  }
+
+  readFile(projectId: string, filePath: string): Observable<{ path: string; content: string; size: number }> {
+    return this.http.get<any>(`${this.apiUrl}/${projectId}/files/read`, { params: { path: filePath } });
+  }
+
+  writeFile(projectId: string, filePath: string, content: string): Observable<{ message: string; path: string }> {
+    return this.http.post<any>(`${this.apiUrl}/${projectId}/files/write`, { path: filePath, content });
+  }
+
+  openInExplorer(projectId: string, relativePath?: string): Observable<{ message: string }> {
+    return this.http.post<any>(`${this.apiUrl}/${projectId}/files/open-in-explorer`, { path: relativePath || '' });
   }
 
   getTimeAllocation(): Observable<{ projectId: string; name: string; timeConsumption: number }[]> {
