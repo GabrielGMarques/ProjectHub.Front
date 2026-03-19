@@ -45,160 +45,49 @@ import { FileExplorerComponent } from '../../components/file-explorer/file-explo
             <a routerLink="/dashboard" class="back-link">
               <mat-icon>arrow_back</mat-icon> Dashboard
             </a>
-            <button class="edit-toggle" (click)="toggleEdit()" [class.active]="isEditing">
-              <mat-icon>{{ isEditing ? 'check' : 'edit' }}</mat-icon>
-              {{ isEditing ? 'Save' : 'Edit' }}
-            </button>
           </div>
 
-          @if (isEditing) {
-            <form [formGroup]="form" class="edit-header">
-              <mat-form-field class="full-width" appearance="outline">
-                <mat-label>Project Name</mat-label>
-                <input matInput formControlName="name" />
-              </mat-form-field>
-              <mat-form-field class="full-width" appearance="outline">
-                <mat-label>Description</mat-label>
-                <textarea matInput formControlName="description" rows="2"></textarea>
-              </mat-form-field>
-            </form>
-          } @else {
-            <h1>{{ project.name }}</h1>
-            @if (project.description) {
-              <p class="description">{{ project.description }}</p>
-            }
+          <h1>{{ project.name }}</h1>
+          @if (project.description) {
+            <p class="description">{{ project.description }}</p>
           }
         </div>
 
-        <!-- Metrics -->
-        @if (isEditing) {
-          <form [formGroup]="form" class="metrics-edit">
-            <div class="metrics-edit-row">
-              <mat-form-field appearance="outline">
-                <mat-label>MRR ($)</mat-label>
-                <input matInput type="number" formControlName="mrr" />
-              </mat-form-field>
-              <mat-form-field appearance="outline">
-                <mat-label>Clients</mat-label>
-                <input matInput type="number" formControlName="clientCount" />
-              </mat-form-field>
-              <mat-form-field appearance="outline">
-                <mat-label>Impact</mat-label>
-                <mat-select formControlName="impact">
-                  <mat-option value="low">Low</mat-option>
-                  <mat-option value="medium">Medium</mat-option>
-                  <mat-option value="high">High</mat-option>
-                </mat-select>
-              </mat-form-field>
-              <mat-form-field appearance="outline">
-                <mat-label>Niche</mat-label>
-                <input matInput formControlName="niche" />
-              </mat-form-field>
-            </div>
-            <mat-form-field class="full-width" appearance="outline">
-              <mat-label>Background Image URL</mat-label>
-              <input matInput formControlName="backgroundImage" />
-            </mat-form-field>
-            <div class="local-path-field">
-              <mat-form-field class="full-width" appearance="outline">
-                <mat-label>Local Path</mat-label>
-                <input matInput formControlName="localPath" placeholder="e.g. D:\\Projects\\MyApp" />
-              </mat-form-field>
-              <button type="button" class="browse-btn" (click)="openFolderPicker()" matTooltip="Browse folders">
-                <mat-icon>folder_open</mat-icon>
-              </button>
-            </div>
-
-            @if (showFolderPicker) {
-              <div class="folder-picker">
-                <div class="fp-header">
-                  <span class="fp-title"><mat-icon>folder</mat-icon> Select Folder</span>
-                  <button class="fp-close" (click)="showFolderPicker = false"><mat-icon>close</mat-icon></button>
-                </div>
-                <div class="fp-breadcrumb">
-                  @if (folderPickerParent !== null) {
-                    <button class="fp-up" (click)="browseTo(folderPickerParent!)" matTooltip="Go up"><mat-icon>arrow_upward</mat-icon> Up</button>
-                  }
-                  <span class="fp-current">{{ folderPickerCurrent || 'Drives' }}</span>
-                </div>
-                @if (folderPickerLoading) {
-                  <div class="fp-loading"><mat-spinner diameter="20"></mat-spinner></div>
-                } @else {
-                  <div class="fp-list">
-                    @for (entry of folderPickerEntries; track entry.path) {
-                      <div class="fp-item" (dblclick)="browseTo(entry.path)">
-                        <mat-icon class="fp-icon">folder</mat-icon>
-                        <span class="fp-name">{{ entry.name }}</span>
-                        <button class="fp-select-btn" (click)="selectFolder(entry.path)" matTooltip="Select this folder">
-                          <mat-icon>check</mat-icon>
-                        </button>
-                      </div>
-                    }
-                    @if (!folderPickerEntries.length) {
-                      <div class="fp-empty">No subfolders</div>
-                    }
-                  </div>
-                }
-                @if (folderPickerCurrent) {
-                  <div class="fp-footer">
-                    <button class="fp-use-current" (click)="selectFolder(folderPickerCurrent)">
-                      <mat-icon>check_circle</mat-icon> Use current folder
-                    </button>
-                  </div>
-                }
-              </div>
-            }
-            <mat-form-field class="full-width" appearance="outline">
-              <mat-label>Monetization Plan</mat-label>
-              <textarea matInput formControlName="monetizationPlan" rows="3"
-                placeholder="How will this project generate revenue?"></textarea>
-            </mat-form-field>
-            <div class="presentation-edit-section">
-              <label class="presentation-label"><mat-icon>article</mat-icon> Project Presentation (Markdown)</label>
-              <p class="presentation-hint">This presentation is shared as context with AI Coach, Agent, Marketing Research, and Skills.</p>
-              <textarea
-                class="presentation-textarea"
-                formControlName="presentation"
-                rows="10"
-                placeholder="# My Project&#10;&#10;Describe your project, goals, target audience, tech stack, unique value proposition, etc.&#10;&#10;This context will be available to all AI tools."></textarea>
-            </div>
-          </form>
-        } @else {
-          <div class="metrics-row">
-            <div class="metric-card">
-              <span class="metric-label">MRR</span>
-              <span class="metric-value">\${{ project.mrr | number }}</span>
-            </div>
-            <div class="metric-card">
-              <span class="metric-label">Clients</span>
-              <span class="metric-value">{{ project.clientCount }}</span>
-            </div>
-            <div class="metric-card">
-              <span class="metric-label">Impact</span>
-              <span class="metric-value impact-{{ project.impact }}">{{ project.impact }}</span>
-            </div>
-            <div class="metric-card">
-              <span class="metric-label">Hours/Week</span>
-              <span class="metric-value">{{ weeklyHours }}h</span>
-            </div>
-            @if (project.niche) {
-              <div class="metric-card">
-                <span class="metric-label">Niche</span>
-                <span class="metric-value">{{ project.niche }}</span>
-              </div>
-            }
+        <!-- Metrics (always visible in header) -->
+        <div class="metrics-row">
+          <div class="metric-card">
+            <span class="metric-label">MRR</span>
+            <span class="metric-value">\${{ project.mrr | number }}</span>
           </div>
-
-          @if (project.monetizationPlan) {
-            <div class="monetization-banner">
-              <mat-icon>attach_money</mat-icon>
-              <span>{{ project.monetizationPlan }}</span>
+          <div class="metric-card">
+            <span class="metric-label">Clients</span>
+            <span class="metric-value">{{ project.clientCount }}</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Impact</span>
+            <span class="metric-value impact-{{ project.impact }}">{{ project.impact }}</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Hours/Week</span>
+            <span class="metric-value">{{ weeklyHours }}h</span>
+          </div>
+          @if (project.niche) {
+            <div class="metric-card">
+              <span class="metric-label">Niche</span>
+              <span class="metric-value">{{ project.niche }}</span>
             </div>
           }
+        </div>
+
+        @if (project.monetizationPlan) {
+          <div class="monetization-banner">
+            <mat-icon>attach_money</mat-icon>
+            <span>{{ project.monetizationPlan }}</span>
+          </div>
         }
 
         <!-- Presentation -->
-        @if (!isEditing && project.presentation) {
+        @if (project.presentation) {
           <div class="presentation-card">
             <div class="section-header">
               <span class="section-title"><mat-icon>article</mat-icon> Presentation</span>
@@ -214,9 +103,98 @@ import { FileExplorerComponent } from '../../components/file-explorer/file-explo
           <button class="tab" [class.active]="activeTab === 'agent'" (click)="activeTab = 'agent'"><mat-icon>terminal</mat-icon> Agent</button>
           <button class="tab" [class.active]="activeTab === 'skills'" (click)="activeTab = 'skills'"><mat-icon>auto_fix_high</mat-icon> Skills</button>
           <button class="tab" [class.active]="activeTab === 'files'" (click)="activeTab = 'files'"><mat-icon>folder_open</mat-icon> Files</button>
+          <button class="tab" [class.active]="activeTab === 'settings'" (click)="openSettings()"><mat-icon>settings</mat-icon> Settings</button>
         </div>
 
-        @if (activeTab === 'marketing') {
+        @if (activeTab === 'settings') {
+          <div class="settings-tab">
+            <div class="settings-header">
+              <h2>Project Settings</h2>
+              <button class="settings-save-btn" (click)="saveSettings()">
+                <mat-icon>check</mat-icon> Save Changes
+              </button>
+            </div>
+            <form [formGroup]="form" class="settings-form">
+              <div class="settings-section">
+                <h3><mat-icon>info</mat-icon> General</h3>
+                <mat-form-field class="full-width" appearance="outline">
+                  <mat-label>Project Name</mat-label>
+                  <input matInput formControlName="name" />
+                </mat-form-field>
+                <mat-form-field class="full-width" appearance="outline">
+                  <mat-label>Description</mat-label>
+                  <textarea matInput formControlName="description" rows="2"></textarea>
+                </mat-form-field>
+                <div class="settings-row">
+                  <mat-form-field appearance="outline">
+                    <mat-label>MRR ($)</mat-label>
+                    <input matInput type="number" formControlName="mrr" />
+                  </mat-form-field>
+                  <mat-form-field appearance="outline">
+                    <mat-label>Clients</mat-label>
+                    <input matInput type="number" formControlName="clientCount" />
+                  </mat-form-field>
+                  <mat-form-field appearance="outline">
+                    <mat-label>Impact</mat-label>
+                    <mat-select formControlName="impact">
+                      <mat-option value="low">Low</mat-option>
+                      <mat-option value="medium">Medium</mat-option>
+                      <mat-option value="high">High</mat-option>
+                    </mat-select>
+                  </mat-form-field>
+                  <mat-form-field appearance="outline">
+                    <mat-label>Niche</mat-label>
+                    <input matInput formControlName="niche" />
+                  </mat-form-field>
+                </div>
+                <mat-form-field class="full-width" appearance="outline">
+                  <mat-label>Background Image URL</mat-label>
+                  <input matInput formControlName="backgroundImage" />
+                </mat-form-field>
+                <mat-form-field class="full-width" appearance="outline">
+                  <mat-label>Monetization Plan</mat-label>
+                  <textarea matInput formControlName="monetizationPlan" rows="3"
+                    placeholder="How will this project generate revenue?"></textarea>
+                </mat-form-field>
+              </div>
+
+              <div class="settings-section">
+                <h3><mat-icon>snippet_folder</mat-icon> Project Folders</h3>
+                <p class="settings-hint">The first folder is the agent's working directory. All folders are accessible from the Files tab.</p>
+                @for (folder of editFolders; track $index) {
+                  <div class="folder-row">
+                    <span class="folder-index" [class.primary]="$index === 0">{{ $index === 0 ? 'cwd' : $index }}</span>
+                    <input class="folder-input" [value]="folder" (input)="updateFolder($index, $event)" placeholder="e.g. D:\\Projects\\MyApp" />
+                    <button type="button" class="folder-browse" (click)="pickFolder($index)" matTooltip="Browse" [disabled]="pickingFolder">
+                      <mat-icon>folder_open</mat-icon>
+                    </button>
+                    <button type="button" class="folder-remove" (click)="removeFolder($index)" matTooltip="Remove">
+                      <mat-icon>close</mat-icon>
+                    </button>
+                  </div>
+                }
+                <button type="button" class="add-folder-btn" (click)="pickAndAddFolder()" [disabled]="pickingFolder">
+                  @if (pickingFolder) {
+                    <mat-spinner diameter="14"></mat-spinner>
+                  } @else {
+                    <mat-icon>add</mat-icon>
+                  }
+                  Add folder
+                </button>
+              </div>
+
+              <div class="settings-section">
+                <h3><mat-icon>article</mat-icon> Presentation</h3>
+                <p class="settings-hint">This presentation is shared as context with AI Coach, Agent, Marketing Research, and Skills.</p>
+                <textarea
+                  class="presentation-textarea"
+                  formControlName="presentation"
+                  rows="10"
+                  placeholder="# My Project&#10;&#10;Describe your project, goals, target audience, tech stack, unique value proposition, etc.&#10;&#10;This context will be available to all AI tools."></textarea>
+              </div>
+            </form>
+          </div>
+        } @else if (activeTab === 'marketing') {
           <app-marketing-research [project]="project" [availableModels]="availableModels"></app-marketing-research>
         } @else if (activeTab === 'agent') {
           <app-agent-terminal [project]="project"></app-agent-terminal>
@@ -823,12 +801,73 @@ import { FileExplorerComponent } from '../../components/file-explorer/file-explo
     .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .send-btn mat-icon { font-size: 20px; width: 20px; height: 20px; }
 
+    /* Folders */
+    .folders-section { margin-bottom: 12px; }
+    .folders-label { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 700; color: var(--color-text); margin-bottom: 4px; }
+    .folders-label mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--color-primary); }
+    .folders-hint { font-size: 0.78rem; color: var(--color-text-subtle); margin: 0 0 8px; }
+    .folder-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+    .folder-index {
+      width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+      font-size: 0.68rem; font-weight: 700; color: var(--color-text-subtle);
+      border: 1px solid var(--color-border-light); border-radius: var(--radius-sm);
+      background: var(--color-bg); flex-shrink: 0;
+    }
+    .folder-index.primary { color: var(--color-primary); border-color: var(--color-primary); background: rgba(212,175,55,0.06); font-size: 0.6rem; }
+    .folder-input {
+      flex: 1; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: var(--color-bg); color: var(--color-text); font-family: inherit; font-size: 0.82rem; outline: none;
+    }
+    .folder-input:focus { border-color: var(--color-primary); }
+    .folder-input::placeholder { color: var(--color-text-subtle); }
+    .folder-browse, .folder-remove {
+      width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: none; color: var(--color-text-subtle); cursor: pointer; flex-shrink: 0;
+    }
+    .folder-browse:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    .folder-remove:hover { border-color: #ef4444; color: #ef4444; }
+    .folder-browse mat-icon, .folder-remove mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .add-folder-btn {
+      display: flex; align-items: center; gap: 4px; border: 1px dashed var(--color-border);
+      border-radius: var(--radius-sm); background: none; color: var(--color-text-subtle);
+      font-family: inherit; font-size: 0.78rem; font-weight: 600;
+      padding: 6px 14px; cursor: pointer; transition: all 0.15s;
+    }
+    .add-folder-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    .add-folder-btn mat-icon { font-size: 16px; width: 16px; height: 16px; }
+
+    /* Settings tab */
+    .settings-tab { padding: 1rem 0; }
+    .settings-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 1.5rem;
+    }
+    .settings-header h2 { margin: 0; font-size: 1.2rem; font-weight: 700; color: var(--color-text); }
+    .settings-save-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 8px 20px; border: none; border-radius: var(--radius-sm);
+      background: var(--color-primary); color: #0A0A0A;
+      font-family: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    }
+    .settings-save-btn:hover { opacity: 0.9; }
+    .settings-save-btn mat-icon { font-size: 18px; width: 18px; height: 18px; }
+    .settings-form { display: flex; flex-direction: column; gap: 0; }
+    .settings-section {
+      background: var(--color-bg-card); border: 1px solid var(--color-border-light);
+      border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1rem;
+    }
+    .settings-section h3 {
+      display: flex; align-items: center; gap: 6px;
+      margin: 0 0 1rem; font-size: 0.95rem; font-weight: 700; color: var(--color-text);
+    }
+    .settings-section h3 mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--color-primary); }
+    .settings-hint { font-size: 0.78rem; color: var(--color-text-subtle); margin: -0.5rem 0 0.75rem; }
+    .settings-row {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px;
+    }
+
     /* Folder Picker */
-    .local-path-field { display: flex; gap: 8px; align-items: flex-start; }
-    .local-path-field mat-form-field { flex: 1; }
-    .browse-btn { width: 40px; height: 40px; margin-top: 4px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-card); color: var(--color-text-subtle); cursor: pointer; flex-shrink: 0; }
-    .browse-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
-    .browse-btn mat-icon { font-size: 20px; width: 20px; height: 20px; }
     .folder-picker { border: 1px solid var(--color-border-light); border-radius: var(--radius-md); background: var(--color-bg-card); overflow: hidden; margin-bottom: 8px; }
     .fp-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--color-border-light); }
     .fp-title { display: flex; align-items: center; gap: 6px; font-size: .88rem; font-weight: 700; color: var(--color-text); }
@@ -855,6 +894,7 @@ import { FileExplorerComponent } from '../../components/file-explorer/file-explo
     .fp-use-current { display: flex; align-items: center; gap: 6px; width: 100%; padding: 8px 14px; border: none; border-radius: var(--radius-sm); background: var(--color-primary); color: #0A0A0A; font-family: inherit; font-size: .82rem; font-weight: 600; cursor: pointer; justify-content: center; }
     .fp-use-current:hover { opacity: .9; }
     .fp-use-current mat-icon { font-size: 18px; width: 18px; height: 18px; }
+
   `],
 })
 export class ProjectDetailComponent implements OnInit {
@@ -863,7 +903,7 @@ export class ProjectDetailComponent implements OnInit {
   project: Project | null = null;
   loading = true;
   isEditing = false;
-  activeTab: 'overview' | 'marketing' | 'agent' | 'skills' | 'files' = 'overview';
+  activeTab: 'overview' | 'marketing' | 'agent' | 'skills' | 'files' | 'settings' = 'overview';
   form!: FormGroup;
 
   // Todos
@@ -873,12 +913,9 @@ export class ProjectDetailComponent implements OnInit {
   uploading = false;
   dragOver = false;
 
-  // Folder Picker
-  showFolderPicker = false;
-  folderPickerCurrent = '';
-  folderPickerParent: string | null = null;
-  folderPickerEntries: { name: string; path: string; isDir: boolean }[] = [];
-  folderPickerLoading = false;
+  // Folders
+  editFolders: string[] = [];
+  pickingFolder = false;
 
   // Presentation
   parsedPresentation: SafeHtml = '';
@@ -946,10 +983,15 @@ export class ProjectDetailComponent implements OnInit {
       clientCount: [this.project.clientCount],
       impact: [this.project.impact],
       niche: [this.project.niche],
-      localPath: [this.project.localPath || ''],
       presentation: [this.project.presentation || ''],
       monetizationPlan: [this.project.monetizationPlan],
     });
+    // Build editFolders: merge folders[] with legacy localPath
+    const folders = [...(this.project.folders || [])];
+    if (this.project.localPath && !folders.includes(this.project.localPath)) {
+      folders.unshift(this.project.localPath);
+    }
+    this.editFolders = folders.length > 0 ? folders : [];
   }
 
   get weeklyHours(): number {
@@ -969,24 +1011,27 @@ export class ProjectDetailComponent implements OnInit {
     return (this.doneCount / total) * 100;
   }
 
-  // Edit
-  toggleEdit(): void {
-    if (this.isEditing && this.project?._id) {
-      const formValue = this.form.value;
-      Object.assign(this.project, formValue);
-      this.projectService.update(this.project._id, formValue).subscribe({
-        next: (updated) => {
-          this.project = updated;
-          if (!this.project.todos) this.project.todos = [];
-          this.updateParsedPresentation();
-          this.snackBar.open('Project updated', 'Close', { duration: 2000 });
-        },
-        error: () => this.snackBar.open('Failed to update project', 'Close', { duration: 3000 }),
-      });
-    } else if (!this.isEditing) {
-      this.initForm();
-    }
-    this.isEditing = !this.isEditing;
+  // Settings
+  openSettings(): void {
+    this.initForm();
+    this.activeTab = 'settings';
+  }
+
+  saveSettings(): void {
+    if (!this.project?._id) return;
+    const formValue = this.form.value;
+    const filteredFolders = this.editFolders.filter(p => p.trim());
+    const updateData = { ...formValue, folders: filteredFolders, localPath: filteredFolders[0] || '' };
+    Object.assign(this.project, updateData);
+    this.projectService.update(this.project._id, updateData).subscribe({
+      next: (updated) => {
+        this.project = updated;
+        if (!this.project.todos) this.project.todos = [];
+        this.updateParsedPresentation();
+        this.snackBar.open('Project updated', 'Close', { duration: 2000 });
+      },
+      error: () => this.snackBar.open('Failed to update project', 'Close', { duration: 3000 }),
+    });
   }
 
   // Todos
@@ -1088,31 +1133,35 @@ export class ProjectDetailComponent implements OnInit {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
-  // Folder Picker
-  openFolderPicker(): void {
-    this.showFolderPicker = true;
-    this.browseTo(this.form.get('localPath')?.value || '');
+  // Folders
+  removeFolder(index: number): void {
+    this.editFolders.splice(index, 1);
   }
 
-  browseTo(folderPath: string): void {
-    this.folderPickerLoading = true;
-    this.projectService.browseFolders(folderPath || undefined).subscribe({
+  updateFolder(index: number, event: Event): void {
+    this.editFolders[index] = (event.target as HTMLInputElement).value;
+  }
+
+  pickFolder(index: number): void {
+    this.pickingFolder = true;
+    this.projectService.pickFolder().subscribe({
       next: (res) => {
-        this.folderPickerCurrent = res.current;
-        this.folderPickerParent = res.parent ?? null;
-        this.folderPickerEntries = res.entries;
-        this.folderPickerLoading = false;
+        this.pickingFolder = false;
+        if (res.path) this.editFolders[index] = res.path;
       },
-      error: () => {
-        this.folderPickerLoading = false;
-        this.snackBar.open('Failed to browse folders', 'Close', { duration: 3000 });
-      },
+      error: () => { this.pickingFolder = false; },
     });
   }
 
-  selectFolder(folderPath: string): void {
-    this.form.get('localPath')?.setValue(folderPath);
-    this.showFolderPicker = false;
+  pickAndAddFolder(): void {
+    this.pickingFolder = true;
+    this.projectService.pickFolder().subscribe({
+      next: (res) => {
+        this.pickingFolder = false;
+        if (res.path) this.editFolders.push(res.path);
+      },
+      error: () => { this.pickingFolder = false; },
+    });
   }
 
   private updateParsedPresentation(): void {

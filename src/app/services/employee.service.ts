@@ -1,0 +1,109 @@
+import { Injectable, NgZone } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { Employee, EmployeeSkill, RoleTemplate, CommFile } from '../models/employee.model';
+import { ClaudeCodeEvent } from '../models/project.model';
+import { environment } from '../../environments/environment';
+
+@Injectable({ providedIn: 'root' })
+export class EmployeeService {
+  private apiUrl = `${environment.apiUrl}/employees`;
+
+  constructor(private http: HttpClient, private zone: NgZone) {}
+
+  getRoles(): Observable<RoleTemplate[]> {
+    return this.http.get<RoleTemplate[]>(`${this.apiUrl}/roles`);
+  }
+
+  getAll(): Observable<Employee[]> {
+    return this.http.get<Employee[]>(`${this.apiUrl}/all`);
+  }
+
+  getByProject(projectId: string): Observable<Employee[]> {
+    return this.http.get<Employee[]>(`${this.apiUrl}/project/${projectId}`);
+  }
+
+  getById(id: string): Observable<Employee> {
+    return this.http.get<Employee>(`${this.apiUrl}/${id}`);
+  }
+
+  hire(projectId: string, role: string, name?: string): Observable<Employee> {
+    return this.http.post<Employee>(`${this.apiUrl}/hire`, { projectId, role, name });
+  }
+
+  fire(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/${id}`);
+  }
+
+  assignTask(employeeId: string, task: string): Observable<ClaudeCodeEvent> {
+    return new Observable(observer => {
+      const token = localStorage.getItem('token');
+      const abortController = new AbortController();
+
+      fetch(`${this.apiUrl}/${employeeId}/task`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ task }),
+        signal: abortController.signal,
+      }).then(async response => {
+        if (!response.ok) {
+          let errMsg = `HTTP ${response.status}`;
+          try { const body = await response.json(); errMsg = body.error || errMsg; } catch { /* ignore */ }
+          throw new Error(errMsg);
+        }
+        const reader = response.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(line.slice(6));
+                  this.zone.run(() => observer.next(data));
+                } catch {}
+              }
+            }
+          }
+        } catch (err: any) {
+          if (err.name === 'AbortError') return;
+          throw err;
+        }
+        this.zone.run(() => observer.complete());
+      }).catch(err => {
+        if (err.name === 'AbortError') {
+          this.zone.run(() => observer.complete());
+          return;
+        }
+        this.zone.run(() => observer.error(err));
+      });
+
+      return () => abortController.abort();
+    });
+  }
+
+  getComms(projectId: string): Observable<CommFile[]> {
+    return this.http.get<CommFile[]>(`${this.apiUrl}/project/${projectId}/comms`);
+  }
+
+  addSkill(employeeId: string, skill: EmployeeSkill): Observable<Employee> {
+    return this.http.post<Employee>(`${this.apiUrl}/${employeeId}/skills`, skill);
+  }
+
+  removeSkill(employeeId: string, skillName: string): Observable<Employee> {
+    return this.http.delete<Employee>(`${this.apiUrl}/${employeeId}/skills/${encodeURIComponent(skillName)}`);
+  }
+
+  getRoleSkills(role: string): Observable<EmployeeSkill[]> {
+    return this.http.get<EmployeeSkill[]>(`${this.apiUrl}/role-skills/${role}`);
+  }
+}

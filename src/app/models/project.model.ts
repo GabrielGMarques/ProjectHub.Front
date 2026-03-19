@@ -139,6 +139,7 @@ export interface Project {
   backgroundImage: string;
   githubRepos: string[];
   localPath: string;
+  folders: string[];
   mrr: number;
   clientCount: number;
   impact: 'low' | 'medium' | 'high';

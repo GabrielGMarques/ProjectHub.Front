@@ -1,10 +1,12 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterModule } from '@angular/router';
+import { Router, NavigationEnd, RouterModule } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
+import { Subscription, filter } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
+import { ProjectService } from '../../services/project.service';
 import { User } from '../../models/user.model';
 
 @Component({
@@ -18,6 +20,12 @@ import { User } from '../../models/user.model';
           <span class="logo-icon">P</span>
           ProjectsHub
         </a>
+        @if (currentProjectName) {
+          <div class="project-indicator">
+            <mat-icon class="pi-sep">chevron_right</mat-icon>
+            <a class="pi-name" [routerLink]="['/project', currentProjectId]">{{ currentProjectName }}</a>
+          </div>
+        }
         <span class="spacer"></span>
         @if (authService.isLoggedIn) {
           <div class="nav-links">
@@ -36,6 +44,14 @@ import { User } from '../../models/user.model';
             <a class="nav-link" routerLink="/schedule" routerLinkActive="active">
               <mat-icon>calendar_month</mat-icon>
               <span>Schedule</span>
+            </a>
+            <a class="nav-link" routerLink="/hr" routerLinkActive="active">
+              <mat-icon>groups</mat-icon>
+              <span>HR</span>
+            </a>
+            <a class="nav-link" routerLink="/telemetry" routerLinkActive="active">
+              <mat-icon>monitoring</mat-icon>
+              <span>Telemetry</span>
             </a>
           </div>
           <button class="avatar-btn" [matMenuTriggerFor]="userMenu">
@@ -108,6 +124,33 @@ import { User } from '../../models/user.model';
       font-size: 0.9rem;
       border-radius: var(--radius-sm);
     }
+
+    .project-indicator {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      margin-left: 4px;
+      overflow: hidden;
+    }
+    .pi-sep {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      color: var(--color-text-subtle);
+      opacity: 0.5;
+      flex-shrink: 0;
+    }
+    .pi-name {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--color-primary);
+      text-decoration: none;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 200px;
+    }
+    .pi-name:hover { opacity: 0.8; }
 
     .nav-links {
       display: flex;
@@ -184,16 +227,53 @@ import { User } from '../../models/user.model';
     }
   `],
 })
-export class NavbarComponent implements OnInit {
+export class NavbarComponent implements OnInit, OnDestroy {
   currentUser: User | null = null;
+  currentProjectName = '';
+  currentProjectId = '';
+  private routerSub!: Subscription;
 
-  constructor(public authService: AuthService) {}
+  constructor(
+    public authService: AuthService,
+    private router: Router,
+    private projectService: ProjectService,
+  ) {}
 
   ngOnInit(): void {
     if (this.authService.isLoggedIn) {
       this.authService.getProfile().subscribe({
         next: (user) => (this.currentUser = user),
       });
+    }
+
+    // Watch route changes to detect project pages
+    this.routerSub = this.router.events.pipe(
+      filter((e): e is NavigationEnd => e instanceof NavigationEnd)
+    ).subscribe((e) => this.checkProjectRoute(e.urlAfterRedirects));
+
+    // Check initial route
+    this.checkProjectRoute(this.router.url);
+  }
+
+  ngOnDestroy(): void {
+    this.routerSub?.unsubscribe();
+  }
+
+  private checkProjectRoute(url: string): void {
+    const match = url.match(/\/project\/([a-f0-9]+)/);
+    if (match) {
+      const id = match[1];
+      if (id !== this.currentProjectId) {
+        this.currentProjectId = id;
+        this.currentProjectName = '';
+        this.projectService.getById(id).subscribe({
+          next: (p) => this.currentProjectName = p.name,
+          error: () => this.currentProjectName = '',
+        });
+      }
+    } else {
+      this.currentProjectId = '';
+      this.currentProjectName = '';
     }
   }
 

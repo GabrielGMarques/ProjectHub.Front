@@ -64,6 +64,10 @@ export class ProjectService {
     return this.http.delete<void>(`${this.apiUrl}/${projectId}/ai/coach/messages`);
   }
 
+  pickFolder(): Observable<{ path: string }> {
+    return this.http.post<{ path: string }>(`${this.apiUrl}/pick-folder`, {});
+  }
+
   browseFolders(folderPath?: string): Observable<{ current: string; parent: string | null; entries: { name: string; path: string; isDir: boolean }[] }> {
     const params: Record<string, string> = {};
     if (folderPath) params['path'] = folderPath;
@@ -72,25 +76,28 @@ export class ProjectService {
     );
   }
 
-  listFiles(projectId: string, dirPath?: string): Observable<{
+  listFiles(projectId: string, dirPath?: string, root?: string): Observable<{
     current: string; parent: string | null;
     entries: { name: string; path: string; isDir: boolean; size?: number; ext?: string }[]
   }> {
     const params: Record<string, string> = {};
     if (dirPath) params['path'] = dirPath;
+    if (root) params['root'] = root;
     return this.http.get<any>(`${this.apiUrl}/${projectId}/files/list`, { params });
   }
 
-  readFile(projectId: string, filePath: string): Observable<{ path: string; content: string; size: number }> {
-    return this.http.get<any>(`${this.apiUrl}/${projectId}/files/read`, { params: { path: filePath } });
+  readFile(projectId: string, filePath: string, root?: string): Observable<{ path: string; content: string; size: number }> {
+    const params: Record<string, string> = { path: filePath };
+    if (root) params['root'] = root;
+    return this.http.get<any>(`${this.apiUrl}/${projectId}/files/read`, { params });
   }
 
-  writeFile(projectId: string, filePath: string, content: string): Observable<{ message: string; path: string }> {
-    return this.http.post<any>(`${this.apiUrl}/${projectId}/files/write`, { path: filePath, content });
+  writeFile(projectId: string, filePath: string, content: string, root?: string): Observable<{ message: string; path: string }> {
+    return this.http.post<any>(`${this.apiUrl}/${projectId}/files/write`, { path: filePath, content, root });
   }
 
-  openInExplorer(projectId: string, relativePath?: string): Observable<{ message: string }> {
-    return this.http.post<any>(`${this.apiUrl}/${projectId}/files/open-in-explorer`, { path: relativePath || '' });
+  openInExplorer(projectId: string, relativePath?: string, root?: string): Observable<{ message: string }> {
+    return this.http.post<any>(`${this.apiUrl}/${projectId}/files/open-in-explorer`, { path: relativePath || '', root });
   }
 
   getTimeAllocation(): Observable<{ projectId: string; name: string; timeConsumption: number }[]> {

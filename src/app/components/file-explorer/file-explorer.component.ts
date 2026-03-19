@@ -22,66 +22,66 @@ interface FileEntry {
   imports: [CommonModule, FormsModule, MatIconModule, MatProgressSpinnerModule, MatSnackBarModule, MatTooltipModule],
   template: `
     <div class="explorer-container">
-      @if (!project?.localPath) {
+      @if (!project?.folders?.length && !project?.localPath) {
         <div class="no-path">
           <mat-icon>folder_off</mat-icon>
-          <p>No local path configured for this project.</p>
-          <p class="hint">Select a folder to start browsing files.</p>
-          <div class="setup-folder">
-            <div class="setup-input-row">
-              <input class="setup-input" [(ngModel)]="manualPath" placeholder="e.g. D:\\Projects\\MyApp" />
-              <button class="setup-browse-btn" (click)="openFolderPicker()" matTooltip="Browse folders">
-                <mat-icon>folder_open</mat-icon>
-              </button>
-              <button class="setup-save-btn" (click)="saveLocalPath()" [disabled]="!manualPath.trim()">
-                <mat-icon>check</mat-icon> Set Path
-              </button>
-            </div>
-            @if (showFolderPicker) {
-              <div class="picker-panel">
-                <div class="picker-header">
-                  <span class="picker-title"><mat-icon>folder</mat-icon> Select Folder</span>
-                  <button class="picker-close" (click)="showFolderPicker = false"><mat-icon>close</mat-icon></button>
-                </div>
-                <div class="picker-nav">
-                  @if (pickerParent !== null) {
-                    <button class="picker-up" (click)="browsePicker(pickerParent!)" matTooltip="Go up"><mat-icon>arrow_upward</mat-icon> Up</button>
-                  }
-                  <span class="picker-current">{{ pickerCurrent || 'Drives' }}</span>
-                </div>
-                @if (pickerLoading) {
-                  <div class="picker-loading"><mat-spinner diameter="20"></mat-spinner></div>
-                } @else {
-                  <div class="picker-list">
-                    @for (entry of pickerEntries; track entry.path) {
-                      <div class="picker-item" (dblclick)="browsePicker(entry.path)">
-                        <mat-icon class="picker-icon">folder</mat-icon>
-                        <span class="picker-name">{{ entry.name }}</span>
-                        <button class="picker-select" (click)="selectPickerFolder(entry.path)" matTooltip="Select">
-                          <mat-icon>check</mat-icon>
-                        </button>
-                      </div>
-                    }
-                    @if (!pickerEntries.length) {
-                      <div class="picker-empty">No subfolders</div>
-                    }
-                  </div>
-                }
-                @if (pickerCurrent) {
-                  <div class="picker-footer">
-                    <button class="picker-use-current" (click)="selectPickerFolder(pickerCurrent)">
-                      <mat-icon>check_circle</mat-icon> Use current folder
-                    </button>
-                  </div>
-                }
-              </div>
+          <p>No folders configured for this project.</p>
+          <p class="hint">Add a folder to start browsing files.</p>
+          <button class="setup-pick-btn" (click)="pickAndAddFolder()" [disabled]="pickingFolder">
+            @if (pickingFolder) {
+              <mat-spinner diameter="18"></mat-spinner> Waiting for selection...
+            } @else {
+              <mat-icon>folder_open</mat-icon> Select Folder
             }
-          </div>
+          </button>
         </div>
       } @else {
         <div class="explorer-layout">
           <!-- File Tree Panel -->
           <div class="file-panel" [class.collapsed]="!!openFile">
+            <!-- Folder selector -->
+            <div class="folder-selector">
+              @for (fp of allPaths; track fp.path) {
+                <button class="folder-tab" [class.active]="fp.path === activeRootPath"
+                        (click)="switchRoot(fp.path)" [matTooltip]="fp.path">
+                  <mat-icon class="folder-tab-icon">{{ $first ? 'home' : 'snippet_folder' }}</mat-icon>
+                  <span class="folder-tab-name">{{ fp.label }}</span>
+                </button>
+              }
+              <button class="folder-tab folder-manage-btn" [class.active]="showFolderManager"
+                      (click)="toggleFolderManager()" matTooltip="Manage folders">
+                <mat-icon class="folder-tab-icon">edit</mat-icon>
+              </button>
+            </div>
+
+            <!-- Inline folder manager -->
+            @if (showFolderManager) {
+              <div class="folder-manager">
+                @for (folder of editableFolders; track $index) {
+                  <div class="fm-row">
+                    <span class="fm-index" [class.primary]="$index === 0">{{ $index === 0 ? 'cwd' : $index }}</span>
+                    <input class="fm-input" [value]="folder" (input)="onFolderEdit($index, $event)" placeholder="Folder path..." />
+                    <button class="fm-browse" (click)="pickFolderForManager($index)" matTooltip="Browse" [disabled]="pickingFolder">
+                      <mat-icon>folder_open</mat-icon>
+                    </button>
+                    <button class="fm-remove" (click)="removeManagedFolder($index)" matTooltip="Remove">
+                      <mat-icon>close</mat-icon>
+                    </button>
+                  </div>
+                }
+                <div class="fm-actions">
+                  <button class="fm-add" (click)="pickAndAddManagedFolder()" [disabled]="pickingFolder">
+                    @if (pickingFolder) {
+                      <mat-spinner diameter="14"></mat-spinner>
+                    } @else {
+                      <mat-icon>add</mat-icon>
+                    }
+                    Add folder
+                  </button>
+                  <button class="fm-save" (click)="saveManagedFolders()"><mat-icon>check</mat-icon> Save</button>
+                </div>
+              </div>
+            }
             <!-- Breadcrumb -->
             <div class="panel-header">
               <div class="breadcrumb">
@@ -197,10 +197,51 @@ interface FileEntry {
           }
         </div>
       }
+
+      <!-- In-app folder browser overlay -->
+      @if (showFolderPicker) {
+        <div class="picker-overlay" (click)="showFolderPicker = false">
+          <div class="picker-panel" (click)="$event.stopPropagation()">
+            <div class="picker-header">
+              <span class="picker-title"><mat-icon>folder_open</mat-icon> Select Folder</span>
+              <button class="picker-close" (click)="showFolderPicker = false"><mat-icon>close</mat-icon></button>
+            </div>
+            <div class="picker-nav">
+              @if (pickerParent !== null) {
+                <button class="picker-up" (click)="browsePicker(pickerParent!)">
+                  <mat-icon>arrow_upward</mat-icon>
+                </button>
+              }
+              <span class="picker-path">{{ pickerCurrent || 'My Computer' }}</span>
+            </div>
+            @if (pickerLoading) {
+              <div class="picker-loading"><mat-spinner diameter="24"></mat-spinner></div>
+            } @else {
+              <div class="picker-list">
+                @for (entry of pickerEntries; track entry.path) {
+                  <div class="picker-item" (dblclick)="browsePicker(entry.path)" (click)="pickerSelected = entry.path">
+                    <mat-icon class="picker-item-icon">folder</mat-icon>
+                    <span class="picker-item-name" [class.selected]="pickerSelected === entry.path">{{ entry.name }}</span>
+                  </div>
+                }
+                @if (pickerEntries.length === 0) {
+                  <div class="picker-empty">No subfolders</div>
+                }
+              </div>
+            }
+            <div class="picker-footer">
+              <input class="picker-manual" [(ngModel)]="pickerCurrent" placeholder="Or type a path..." (keydown.enter)="browsePicker(pickerCurrent)" />
+              <button class="picker-select-btn" (click)="confirmPickerSelection()" [disabled]="!pickerCurrent && !pickerSelected">
+                <mat-icon>check</mat-icon> Select
+              </button>
+            </div>
+          </div>
+        </div>
+      }
     </div>
   `,
   styles: [`
-    .explorer-container { min-height: 400px; }
+    .explorer-container { min-height: 400px; position: relative; }
 
     .no-path {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -209,6 +250,16 @@ interface FileEntry {
     .no-path mat-icon { font-size: 48px; width: 48px; height: 48px; margin-bottom: 1rem; opacity: 0.4; }
     .no-path p { margin: 0.25rem 0; font-size: 0.9rem; }
     .no-path .hint { font-size: 0.8rem; opacity: 0.7; margin-bottom: 1rem; }
+    .setup-pick-btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 28px; border: none; border-radius: var(--radius-sm);
+      background: var(--color-primary); color: #0A0A0A;
+      font-family: inherit; font-size: 0.9rem; font-weight: 600;
+      cursor: pointer; transition: opacity 0.15s;
+    }
+    .setup-pick-btn:hover:not(:disabled) { opacity: 0.9; }
+    .setup-pick-btn:disabled { opacity: 0.6; cursor: wait; }
+    .setup-pick-btn mat-icon { font-size: 20px; width: 20px; height: 20px; }
 
     /* Folder Setup */
     .setup-folder { width: 100%; max-width: 500px; margin-top: 0.5rem; }
@@ -237,10 +288,17 @@ interface FileEntry {
     .setup-save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .setup-save-btn mat-icon { font-size: 18px; width: 18px; height: 18px; }
 
-    /* Folder Picker */
+    /* Folder Picker Overlay */
+    .picker-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5); z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+    }
     .picker-panel {
-      margin-top: 10px; border: 1px solid var(--color-border-light);
+      width: 550px; max-width: 90vw; max-height: 80vh;
+      border: 1px solid var(--color-border-light);
       border-radius: var(--radius-md); background: var(--color-bg-card); overflow: hidden;
+      display: flex; flex-direction: column;
     }
     .picker-header {
       display: flex; align-items: center; justify-content: space-between;
@@ -276,6 +334,27 @@ interface FileEntry {
     .picker-item:hover .picker-select { opacity: 1; }
     .picker-select:hover { border-color: #22c55e; color: #22c55e; background: rgba(34,197,94,0.08); }
     .picker-select mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .picker-path { font-size: 0.78rem; font-weight: 600; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .picker-item-icon { font-size: 18px; width: 18px; height: 18px; color: var(--color-primary); flex-shrink: 0; }
+    .picker-item-name { flex: 1; font-size: 0.82rem; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .picker-item-name.selected { color: var(--color-primary); font-weight: 700; }
+    .picker-empty { padding: 1.5rem; text-align: center; font-size: 0.82rem; color: var(--color-text-subtle); }
+    .picker-footer {
+      display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+      border-top: 1px solid var(--color-border-light); background: var(--color-bg);
+    }
+    .picker-manual {
+      flex: 1; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: var(--color-bg-card); color: var(--color-text); font-family: inherit; font-size: 0.82rem;
+    }
+    .picker-manual::placeholder { color: var(--color-text-subtle); }
+    .picker-select-btn {
+      display: flex; align-items: center; gap: 4px; padding: 8px 16px;
+      border: none; border-radius: var(--radius-sm); background: var(--color-primary);
+      color: #0A0A0A; font-family: inherit; font-size: 0.82rem; font-weight: 700; cursor: pointer;
+    }
+    .picker-select-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .picker-select-btn mat-icon { font-size: 16px; width: 16px; height: 16px; }
     .picker-empty { padding: 1.5rem; text-align: center; font-size: 0.82rem; color: var(--color-text-subtle); font-style: italic; }
     .picker-footer { padding: 10px 14px; border-top: 1px solid var(--color-border-light); }
     .picker-use-current {
@@ -288,6 +367,74 @@ interface FileEntry {
     .picker-use-current mat-icon { font-size: 18px; width: 18px; height: 18px; }
 
     .panel-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+    /* Folder selector tabs */
+    .folder-selector {
+      display: flex; gap: 2px; padding: 6px 8px;
+      border-bottom: 1px solid var(--color-border-light);
+      background: rgba(0,0,0,0.08); overflow-x: auto;
+    }
+    .folder-tab {
+      display: flex; align-items: center; gap: 4px;
+      border: 1px solid transparent; border-radius: var(--radius-sm);
+      background: none; color: var(--color-text-subtle);
+      font-family: inherit; font-size: 0.72rem; font-weight: 600;
+      padding: 4px 10px; cursor: pointer; white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .folder-tab:hover { background: rgba(212,175,55,0.06); color: var(--color-text); }
+    .folder-tab.active {
+      background: var(--color-bg-card); border-color: var(--color-border-light);
+      color: var(--color-primary); box-shadow: var(--shadow-sm);
+    }
+    .folder-tab-icon { font-size: 14px; width: 14px; height: 14px; }
+    .folder-tab-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+    .folder-manage-btn { margin-left: auto; }
+
+    /* Folder manager */
+    .folder-manager {
+      padding: 10px 12px; border-bottom: 1px solid var(--color-border-light);
+      background: var(--color-bg-card);
+    }
+    .fm-row { display: flex; gap: 4px; align-items: center; margin-bottom: 4px; }
+    .fm-index {
+      width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+      font-size: 0.65rem; font-weight: 700; color: var(--color-text-subtle);
+      border: 1px solid var(--color-border-light); border-radius: var(--radius-sm);
+      flex-shrink: 0;
+    }
+    .fm-index.primary { color: var(--color-primary); border-color: var(--color-primary); font-size: 0.58rem; }
+    .fm-input {
+      flex: 1; padding: 5px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: var(--color-bg); color: var(--color-text); font-family: inherit; font-size: 0.75rem; outline: none;
+      min-width: 0;
+    }
+    .fm-input:focus { border-color: var(--color-primary); }
+    .fm-input::placeholder { color: var(--color-text-subtle); }
+    .fm-browse, .fm-remove {
+      width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: none; color: var(--color-text-subtle); cursor: pointer; flex-shrink: 0;
+    }
+    .fm-browse:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    .fm-remove:hover { border-color: #ef4444; color: #ef4444; }
+    .fm-browse mat-icon, .fm-remove mat-icon { font-size: 14px; width: 14px; height: 14px; }
+    .fm-actions { display: flex; gap: 6px; margin-top: 6px; }
+    .fm-add {
+      display: flex; align-items: center; gap: 3px; border: 1px dashed var(--color-border);
+      border-radius: var(--radius-sm); background: none; color: var(--color-text-subtle);
+      font-family: inherit; font-size: 0.72rem; font-weight: 600; padding: 4px 10px; cursor: pointer;
+    }
+    .fm-add:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    .fm-add mat-icon { font-size: 14px; width: 14px; height: 14px; }
+    .fm-save {
+      display: flex; align-items: center; gap: 3px; margin-left: auto;
+      border: none; border-radius: var(--radius-sm); background: var(--color-primary);
+      color: #0A0A0A; font-family: inherit; font-size: 0.72rem; font-weight: 600;
+      padding: 4px 12px; cursor: pointer;
+    }
+    .fm-save:hover { opacity: 0.9; }
+    .fm-save mat-icon { font-size: 14px; width: 14px; height: 14px; }
 
     .explorer-layout { display: flex; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; min-height: 500px; background: var(--color-bg); }
 
@@ -423,6 +570,14 @@ export class FileExplorerComponent implements OnInit, OnChanges {
   pickerParent: string | null = null;
   pickerEntries: { name: string; path: string; isDir: boolean }[] = [];
   pickerLoading = false;
+  pickerSelected = '';
+  private pickerCallback: ((path: string) => void) | null = null;
+
+  // Multi-folder support
+  activeRootPath = '';
+  showFolderManager = false;
+  editableFolders: string[] = [];
+  pickingFolder = false;
 
   openFile: FileEntry | null = null;
   fileContent = '';
@@ -437,6 +592,20 @@ export class FileExplorerComponent implements OnInit, OnChanges {
     '.mp3', '.mp4', '.wav', '.avi', '.mov', '.zip', '.tar', '.gz', '.rar', '.7z',
     '.exe', '.dll', '.so', '.dylib', '.pdf', '.doc', '.docx', '.xls', '.xlsx',
     '.woff', '.woff2', '.ttf', '.eot', '.class', '.pyc', '.o', '.obj']);
+
+  get allPaths(): { path: string; label: string }[] {
+    const paths: { path: string; label: string }[] = [];
+    const folders = this.project?.folders || [];
+    // Include legacy localPath if not in folders
+    const allFolders = [...folders];
+    if (this.project?.localPath && !allFolders.includes(this.project.localPath)) {
+      allFolders.unshift(this.project.localPath);
+    }
+    for (const fp of allFolders) {
+      if (fp) paths.push({ path: fp, label: fp.split(/[/\\]/).pop() || fp });
+    }
+    return paths;
+  }
 
   get breadcrumbs(): { name: string; path: string }[] {
     if (!this.currentPath) return [];
@@ -458,17 +627,102 @@ export class FileExplorerComponent implements OnInit, OnChanges {
   ) {}
 
   ngOnInit(): void {
-    if (this.project?.localPath) {
+    const firstFolder = this.project?.folders?.[0] || this.project?.localPath;
+    if (firstFolder) {
+      this.activeRootPath = firstFolder;
       this.navigateTo('');
     }
   }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['project'] && !changes['project'].firstChange) {
+      this.activeRootPath = this.project?.folders?.[0] || this.project?.localPath || '';
       this.navigateTo('');
       this.openFile = null;
       this.modified = false;
     }
+  }
+
+  switchRoot(rootPath: string): void {
+    this.activeRootPath = rootPath;
+    this.openFile = null;
+    this.modified = false;
+    this.showFolderManager = false;
+    this.navigateTo('');
+  }
+
+  // Folder manager
+  toggleFolderManager(): void {
+    this.showFolderManager = !this.showFolderManager;
+    if (this.showFolderManager) {
+      const folders = [...(this.project?.folders || [])];
+      if (this.project?.localPath && !folders.includes(this.project.localPath)) {
+        folders.unshift(this.project.localPath);
+      }
+      this.editableFolders = folders.length > 0 ? [...folders] : [];
+    }
+  }
+
+  onFolderEdit(index: number, event: Event): void {
+    this.editableFolders[index] = (event.target as HTMLInputElement).value;
+  }
+
+  addManagedFolder(): void {
+    this.editableFolders.push('');
+  }
+
+  removeManagedFolder(index: number): void {
+    this.editableFolders.splice(index, 1);
+  }
+
+  pickFolderForManager(index: number): void {
+    this.openFolderBrowser((selectedPath) => {
+      this.editableFolders[index] = selectedPath;
+    }, this.editableFolders[index] || '');
+  }
+
+  pickAndAddManagedFolder(): void {
+    this.openFolderBrowser((selectedPath) => {
+      this.editableFolders.push(selectedPath);
+    });
+  }
+
+  pickAndAddFolder(): void {
+    if (!this.project?._id) return;
+    this.openFolderBrowser((selectedPath) => {
+      const folders = [...(this.project!.folders || []), selectedPath];
+      this.projectService.update(this.project!._id!, { folders, localPath: folders[0] }).subscribe({
+        next: (updated) => {
+          this.project = updated;
+          this.projectUpdated.emit(updated);
+          this.activeRootPath = selectedPath;
+          this.snackBar.open('Folder added', 'Close', { duration: 2000 });
+          this.navigateTo('');
+        },
+        error: () => this.snackBar.open('Failed to save folder', 'Close', { duration: 3000 }),
+      });
+    });
+  }
+
+  saveManagedFolders(): void {
+    if (!this.project?._id) return;
+    const folders = this.editableFolders.filter(f => f.trim());
+    this.projectService.update(this.project._id, { folders, localPath: folders[0] || '' }).subscribe({
+      next: (updated) => {
+        this.project = updated;
+        this.projectUpdated.emit(updated);
+        this.showFolderManager = false;
+        this.snackBar.open('Folders saved', 'Close', { duration: 2000 });
+        // Switch to first folder if current root was removed
+        if (folders.length && !folders.includes(this.activeRootPath)) {
+          this.activeRootPath = folders[0];
+          this.navigateTo('');
+        } else if (!folders.length) {
+          this.entries = [];
+        }
+      },
+      error: () => this.snackBar.open('Failed to save folders', 'Close', { duration: 3000 }),
+    });
   }
 
   navigateTo(dirPath: string): void {
@@ -476,7 +730,7 @@ export class FileExplorerComponent implements OnInit, OnChanges {
     // Fix parent ".." navigation
     if (dirPath === '.') dirPath = '';
     this.loading = true;
-    this.projectService.listFiles(this.project._id, dirPath || undefined).subscribe({
+    this.projectService.listFiles(this.project._id, dirPath || undefined, this.activeRootPath || undefined).subscribe({
       next: (res) => {
         this.currentPath = res.current;
         this.parentPath = res.parent;
@@ -507,7 +761,7 @@ export class FileExplorerComponent implements OnInit, OnChanges {
     this.fileTooLarge = false;
     this.modified = false;
 
-    this.projectService.readFile(this.project._id, entry.path).subscribe({
+    this.projectService.readFile(this.project._id, entry.path, this.activeRootPath || undefined).subscribe({
       next: (res) => {
         this.fileContent = res.content;
         this.originalContent = res.content;
@@ -563,7 +817,7 @@ export class FileExplorerComponent implements OnInit, OnChanges {
   saveFile(): void {
     if (!this.project?._id || !this.openFile) return;
     this.saving = true;
-    this.projectService.writeFile(this.project._id, this.openFile.path, this.fileContent).subscribe({
+    this.projectService.writeFile(this.project._id, this.openFile.path, this.fileContent, this.activeRootPath || undefined).subscribe({
       next: () => {
         this.originalContent = this.fileContent;
         this.modified = false;
@@ -595,14 +849,25 @@ export class FileExplorerComponent implements OnInit, OnChanges {
     this.originalContent = '';
   }
 
-  // Folder setup
-  openFolderPicker(): void {
+  // ── In-app folder browser ──
+
+  /** Open folder browser with a callback for when user confirms selection */
+  openFolderBrowser(callback: (path: string) => void, startPath?: string): void {
+    this.pickerCallback = callback;
+    this.pickerSelected = '';
     this.showFolderPicker = true;
-    this.browsePicker(this.manualPath || '');
+    this.browsePicker(startPath || '');
+  }
+
+  openFolderPicker(): void {
+    this.openFolderBrowser((selectedPath) => {
+      this.manualPath = selectedPath;
+    });
   }
 
   browsePicker(folderPath: string): void {
     this.pickerLoading = true;
+    this.pickerSelected = '';
     this.projectService.browseFolders(folderPath || undefined).subscribe({
       next: (res) => {
         this.pickerCurrent = res.current;
@@ -617,6 +882,16 @@ export class FileExplorerComponent implements OnInit, OnChanges {
     });
   }
 
+  confirmPickerSelection(): void {
+    const selected = this.pickerSelected || this.pickerCurrent;
+    if (!selected) return;
+    this.showFolderPicker = false;
+    if (this.pickerCallback) {
+      this.pickerCallback(selected);
+      this.pickerCallback = null;
+    }
+  }
+
   selectPickerFolder(folderPath: string): void {
     this.manualPath = folderPath;
     this.showFolderPicker = false;
@@ -625,14 +900,16 @@ export class FileExplorerComponent implements OnInit, OnChanges {
   saveLocalPath(): void {
     const p = this.manualPath.trim();
     if (!p || !this.project?._id) return;
-    this.projectService.update(this.project._id, { localPath: p }).subscribe({
+    const folders = [...(this.project.folders || []), p];
+    this.projectService.update(this.project._id, { folders, localPath: folders[0] }).subscribe({
       next: (updated) => {
         this.project = updated;
         this.projectUpdated.emit(updated);
-        this.snackBar.open('Local path saved', 'Close', { duration: 2000 });
+        this.activeRootPath = p;
+        this.snackBar.open('Folder added', 'Close', { duration: 2000 });
         this.navigateTo('');
       },
-      error: () => this.snackBar.open('Failed to save local path', 'Close', { duration: 3000 }),
+      error: () => this.snackBar.open('Failed to save folder', 'Close', { duration: 3000 }),
     });
   }
 

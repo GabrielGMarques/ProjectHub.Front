@@ -37,7 +37,7 @@ interface TerminalEntry {
               <mat-icon>stop</mat-icon> Stop
             </button>
           }
-          @if (project.localPath) {
+          @if (project.folders?.length || project.localPath) {
             <button class="history-btn" [class.active]="showHistory" (click)="toggleHistory()" matTooltip="Session history">
               <mat-icon>history</mat-icon>
             </button>
@@ -67,12 +67,12 @@ interface TerminalEntry {
         <div class="session-list empty">No past sessions</div>
       }
 
-      @if (!project.localPath) {
+      @if (!project.folders?.length && !project.localPath) {
         <div class="setup-notice">
           <mat-icon>info</mat-icon>
           <div>
-            <strong>Local path required</strong>
-            <p>Set the project's local path in Edit mode to use the Claude Code agent. This tells the agent where your project files are on disk.</p>
+            <strong>Folders required</strong>
+            <p>Add folders to the project in Edit mode to use the Claude Code agent. This tells the agent where your project files are on disk.</p>
           </div>
         </div>
       } @else {

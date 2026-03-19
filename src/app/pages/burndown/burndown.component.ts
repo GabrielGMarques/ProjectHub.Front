@@ -10,6 +10,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { ProjectService } from '../../services/project.service';
 import { Project, Todo, WeeklySchedule } from '../../models/project.model';
+import { StrategicChatComponent } from '../../components/strategic-chat/strategic-chat.component';
 
 interface ProjectGroup {
   project: Project;
@@ -54,6 +55,7 @@ const COLORS = [
     MatIconModule,
     MatButtonModule,
     DragDropModule,
+    StrategicChatComponent,
   ],
   template: `
     <div class="burndown-page">
@@ -61,6 +63,9 @@ const COLORS = [
         <h1>Burndown</h1>
         <p class="subtitle">All your todos across active projects</p>
       </div>
+
+      <!-- Strategic Advisor Chat -->
+      <app-strategic-chat [projects]="allProjects"></app-strategic-chat>
 
       @if (loading) {
         <div class="loading">
@@ -348,6 +353,7 @@ const COLORS = [
       font-size: 0.9rem;
       color: var(--color-text-subtle);
     }
+    app-strategic-chat { display: block; margin-bottom: 1rem; }
 
     .loading {
       display: flex;
@@ -896,6 +902,7 @@ const COLORS = [
 })
 export class BurndownComponent implements OnInit {
   groups: ProjectGroup[] = [];
+  allProjects: Project[] = [];
   loading = true;
   totalAll = 0;
   doneAll = 0;
@@ -916,6 +923,7 @@ export class BurndownComponent implements OnInit {
   ngOnInit(): void {
     this.projectService.getAll().subscribe({
       next: (projects) => {
+        this.allProjects = projects;
         const active = projects.filter(p => this.calcWeeklyHours(p) > 0);
         active.sort((a, b) => {
           const aOrder = (a.burndownSortOrder != null && a.burndownSortOrder >= 0) ? a.burndownSortOrder : (a.sortOrder ?? 0);
