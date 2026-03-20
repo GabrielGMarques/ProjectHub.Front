@@ -91,6 +91,14 @@ export class EmployeeService {
     });
   }
 
+  stopTask(employeeId: string): Observable<{ stopped: boolean }> {
+    return this.http.post<{ stopped: boolean }>(`${this.apiUrl}/${employeeId}/stop`, {});
+  }
+
+  sendMessage(employeeId: string, message: string): Observable<{ delivered: boolean; detail: string }> {
+    return this.http.post<{ delivered: boolean; detail: string }>(`${this.apiUrl}/${employeeId}/message`, { message });
+  }
+
   getComms(projectId: string): Observable<CommFile[]> {
     return this.http.get<CommFile[]>(`${this.apiUrl}/project/${projectId}/comms`);
   }
@@ -106,4 +114,30 @@ export class EmployeeService {
   getRoleSkills(role: string): Observable<EmployeeSkill[]> {
     return this.http.get<EmployeeSkill[]>(`${this.apiUrl}/role-skills/${role}`);
   }
+
+  getLogs(employeeId: string, page = 1, limit = 100, category?: string): Observable<EmployeeLogsResponse> {
+    let url = `${this.apiUrl}/${employeeId}/logs?page=${page}&limit=${limit}`;
+    if (category) url += `&category=${category}`;
+    return this.http.get<EmployeeLogsResponse>(url);
+  }
+}
+
+export interface EmployeeLogEntry {
+  _id: string;
+  category: string;
+  content: string;
+  employeeName: string;
+  employeeAvatar: string;
+  employeeRole: string;
+  projectName: string;
+  metadata?: Record<string, any>;
+  createdAt: string;
+}
+
+export interface EmployeeLogsResponse {
+  logs: EmployeeLogEntry[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
 }

@@ -144,6 +144,7 @@ export interface Project {
   clientCount: number;
   impact: 'low' | 'medium' | 'high';
   niche: string;
+  onHolding: boolean;
   timeConsumption: number;
   timeSpent: number;
   timeSpentPerDay: WeeklySchedule;

@@ -85,7 +85,7 @@ interface FileEntry {
             <!-- Breadcrumb -->
             <div class="panel-header">
               <div class="breadcrumb">
-                <button class="bc-root" (click)="navigateTo('')" matTooltip="Project root">
+                <button class="bc-root" (click)="navigateTo('')" matTooltip="Company root">
                   <mat-icon>home</mat-icon>
                 </button>
                 @for (crumb of breadcrumbs; track crumb.path) {

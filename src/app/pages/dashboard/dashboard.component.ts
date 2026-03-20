@@ -28,12 +28,12 @@ import { Project } from '../../models/project.model';
     <div class="dashboard">
       <div class="dashboard-header">
         <div>
-          <h1>My Projects</h1>
-          <p class="subtitle">{{ projects.length }} project{{ projects.length !== 1 ? 's' : '' }} in your hub</p>
+          <h1>My Companies</h1>
+          <p class="subtitle">{{ projects.length }} company{{ projects.length !== 1 ? 'ies' : '' }} in your hub</p>
         </div>
         <button class="add-btn" (click)="openCreateDialog()">
           <mat-icon>add</mat-icon>
-          New Project
+          New Company
         </button>
       </div>
 
@@ -56,7 +56,7 @@ import { Project } from '../../models/project.model';
             <span class="stat-value">{{ totalHours }}h</span>
           </div>
           <div class="stat-card">
-            <span class="stat-label">Projects</span>
+            <span class="stat-label">Companies</span>
             <span class="stat-value">{{ projects.length }}</span>
           </div>
         </div>
@@ -71,11 +71,11 @@ import { Project } from '../../models/project.model';
           <div class="empty-icon">
             <mat-icon>folder_open</mat-icon>
           </div>
-          <h2>No projects yet</h2>
-          <p>Create your first project to get started!</p>
+          <h2>No companies yet</h2>
+          <p>Create your first company to get started!</p>
           <button class="add-btn" (click)="openCreateDialog()">
             <mat-icon>add</mat-icon>
-            Create Project
+            Create Company
           </button>
         </div>
       } @else {
@@ -291,7 +291,7 @@ export class DashboardComponent implements OnInit {
         this.loading = false;
       },
       error: () => {
-        this.snackBar.open('Failed to load projects', 'Close', { duration: 3000 });
+        this.snackBar.open('Failed to load companies', 'Close', { duration: 3000 });
         this.loading = false;
       },
     });
@@ -317,9 +317,9 @@ export class DashboardComponent implements OnInit {
         this.projectService.create(result).subscribe({
           next: (project) => {
             this.projects.unshift(project);
-            this.snackBar.open('Project created!', 'Close', { duration: 2000 });
+            this.snackBar.open('Company created!', 'Close', { duration: 2000 });
           },
-          error: () => this.snackBar.open('Failed to create project', 'Close', { duration: 3000 }),
+          error: () => this.snackBar.open('Failed to create company', 'Close', { duration: 3000 }),
         });
       }
     });
@@ -332,9 +332,9 @@ export class DashboardComponent implements OnInit {
       next: (updated) => {
         const idx = this.projects.findIndex((p) => p._id === _id);
         if (idx !== -1) this.projects[idx] = updated;
-        this.snackBar.open('Project updated!', 'Close', { duration: 2000 });
+        this.snackBar.open('Company updated!', 'Close', { duration: 2000 });
       },
-      error: () => this.snackBar.open('Failed to update project', 'Close', { duration: 3000 }),
+      error: () => this.snackBar.open('Failed to update company', 'Close', { duration: 3000 }),
     });
   }
 
@@ -342,9 +342,9 @@ export class DashboardComponent implements OnInit {
     this.projectService.delete(id).subscribe({
       next: () => {
         this.projects = this.projects.filter((p) => p._id !== id);
-        this.snackBar.open('Project deleted', 'Close', { duration: 2000 });
+        this.snackBar.open('Company deleted', 'Close', { duration: 2000 });
       },
-      error: () => this.snackBar.open('Failed to delete project', 'Close', { duration: 3000 }),
+      error: () => this.snackBar.open('Failed to delete company', 'Close', { duration: 3000 }),
     });
   }
 }

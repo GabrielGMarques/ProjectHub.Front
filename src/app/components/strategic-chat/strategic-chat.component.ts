@@ -61,7 +61,7 @@ import { marked } from 'marked';
           @if (messages.length === 0 && !loading) {
             <div class="empty-chat">
               <mat-icon>psychology</mat-icon>
-              <p>Ask me about priorities, time allocation, or how to grow your projects.</p>
+              <p>Ask me about priorities, time allocation, or how to grow your companies.</p>
               <div class="suggestions">
                 <button class="suggestion-btn" (click)="sendSuggestion('What should I prioritize this week?')">
                   <mat-icon>trending_up</mat-icon> What to prioritize?
@@ -69,10 +69,10 @@ import { marked } from 'marked';
                 <button class="suggestion-btn" (click)="sendSuggestion('Am I spreading my time too thin? Analyze my time allocation.')">
                   <mat-icon>schedule</mat-icon> Time analysis
                 </button>
-                <button class="suggestion-btn" (click)="sendSuggestion('Which project has the highest ROI potential?')">
-                  <mat-icon>insights</mat-icon> Best ROI project
+                <button class="suggestion-btn" (click)="sendSuggestion('Which company has the highest ROI potential?')">
+                  <mat-icon>insights</mat-icon> Best ROI company
                 </button>
-                <button class="suggestion-btn" (click)="sendSuggestion('Create a todo list of the most impactful next steps across all projects.')">
+                <button class="suggestion-btn" (click)="sendSuggestion('Create a todo list of the most impactful next steps across all companies.')">
                   <mat-icon>checklist</mat-icon> Action items
                 </button>
               </div>
@@ -156,7 +156,7 @@ import { marked } from 'marked';
           <textarea
             class="chat-input"
             [(ngModel)]="userMessage"
-            placeholder="Ask about your projects..."
+            placeholder="Ask about your companies..."
             (keydown)="onKeyDown($event)"
             rows="1"
           ></textarea>
@@ -567,9 +567,9 @@ export class StrategicChatComponent implements OnInit, OnDestroy {
     switch (action.type) {
       case 'add_todos': return `Add ${action.items?.length || 0} todo(s) to ${projectName}`;
       case 'update_field': return `Update ${action.field} on ${projectName}`;
-      case 'create_project': return `Create project: ${action.projectName}`;
+      case 'create_project': return `Create company: ${action.projectName}`;
       case 'run_agent': return `Run agent on ${projectName}: ${(action.prompt || '').substring(0, 60)}...`;
-      case 'prioritize': return `Reorder ${action.projectIds?.length || 0} projects`;
+      case 'prioritize': return `Reorder ${action.projectIds?.length || 0} companies`;
       default: return 'Action';
     }
   }

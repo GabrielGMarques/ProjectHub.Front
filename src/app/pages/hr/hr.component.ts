@@ -23,7 +23,7 @@ import { marked } from 'marked';
     <div class="hr-page">
       <div class="page-header">
         <h1>HR Department</h1>
-        <p class="subtitle">Hire and manage AI employees for your projects</p>
+        <p class="subtitle">Hire and manage AI employees for your companies</p>
       </div>
 
       @if (loading) {
@@ -51,11 +51,11 @@ import { marked } from 'marked';
 
         <!-- Overview tab: All projects with employees in columns -->
         @if (activeTab === 'overview') {
-          @if (allEmployees.length === 0) {
+          @if (projects.length === 0) {
             <div class="empty-state">
               <mat-icon>group_add</mat-icon>
-              <h2>No employees hired yet</h2>
-              <p>Go to the Hire tab to add AI employees to your projects.</p>
+              <h2>No companies yet</h2>
+              <p>Create a company on the Dashboard first, then come back to hire employees.</p>
             </div>
           } @else {
             <div class="overview-grid">
@@ -85,7 +85,12 @@ import { marked } from 'marked';
                       </div>
                     }
                     @if (pg.employees.length === 0) {
-                      <div class="project-col-empty">No employees</div>
+                      <div class="project-col-empty">
+                        <span>No employees</span>
+                        <button class="hire-quick-btn" (click)="selectedProjectId = pg.project._id!; activeTab = 'hire'">
+                          <mat-icon>person_add</mat-icon> Hire
+                        </button>
+                      </div>
                     }
                   </div>
                 </div>
@@ -102,10 +107,57 @@ import { marked } from 'marked';
                     <span class="detail-title">{{ selectedEmployee.title }}</span>
                     <span class="detail-status" [class]="selectedEmployee.status">{{ selectedEmployee.status }}</span>
                   </div>
+                  <button class="logs-btn" (click)="openLogs(selectedEmployee)" matTooltip="View Logs">
+                    <mat-icon>receipt_long</mat-icon>
+                  </button>
                   <button class="fire-btn" (click)="fireEmployee(selectedEmployee)" matTooltip="Remove">
                     <mat-icon>person_remove</mat-icon>
                   </button>
                 </div>
+
+                <!-- Logs panel -->
+                @if (showLogsFor === selectedEmployee._id) {
+                  <div class="logs-panel">
+                    <div class="logs-header">
+                      <h3><mat-icon>receipt_long</mat-icon> Execution Logs</h3>
+                      <div class="logs-filters">
+                        <button class="filter-chip" [class.active]="logsFilter === ''" (click)="logsFilter = ''; loadLogs(selectedEmployee)">All</button>
+                        <button class="filter-chip" [class.active]="logsFilter === 'task_start'" (click)="logsFilter = 'task_start'; loadLogs(selectedEmployee)">Start</button>
+                        <button class="filter-chip" [class.active]="logsFilter === 'task_complete'" (click)="logsFilter = 'task_complete'; loadLogs(selectedEmployee)">Complete</button>
+                        <button class="filter-chip" [class.active]="logsFilter === 'task_fail'" (click)="logsFilter = 'task_fail'; loadLogs(selectedEmployee)">Failed</button>
+                        <button class="filter-chip" [class.active]="logsFilter === 'tool_use'" (click)="logsFilter = 'tool_use'; loadLogs(selectedEmployee)">Tools</button>
+                        <button class="filter-chip" [class.active]="logsFilter === 'text'" (click)="logsFilter = 'text'; loadLogs(selectedEmployee)">Text</button>
+                        <button class="filter-chip" [class.active]="logsFilter === 'error'" (click)="logsFilter = 'error'; loadLogs(selectedEmployee)">Errors</button>
+                      </div>
+                      <button class="logs-close" (click)="showLogsFor = ''"><mat-icon>close</mat-icon></button>
+                    </div>
+                    <div class="logs-body">
+                      @if (logsLoading) {
+                        <div class="logs-loading"><mat-spinner diameter="20"></mat-spinner> Loading...</div>
+                      } @else if (employeeLogs.length === 0) {
+                        <div class="logs-empty">No logs found</div>
+                      } @else {
+                        @for (log of employeeLogs; track log._id) {
+                          <div class="log-row" [class]="log.category">
+                            <span class="log-time">{{ log.createdAt | date:'MM/dd HH:mm:ss' }}</span>
+                            <span class="log-cat">{{ logIcon(log.category) }} {{ log.category }}</span>
+                            <span class="log-content">{{ log.content }}</span>
+                            @if (log.metadata?.tool) {
+                              <span class="log-tool">{{ log.metadata.tool }}</span>
+                            }
+                          </div>
+                        }
+                        @if (logsPagination.pages > 1) {
+                          <div class="logs-pagination">
+                            <button [disabled]="logsPagination.page <= 1" (click)="loadLogsPage(selectedEmployee, logsPagination.page - 1)">Prev</button>
+                            <span>{{ logsPagination.page }} / {{ logsPagination.pages }} ({{ logsPagination.total }} entries)</span>
+                            <button [disabled]="logsPagination.page >= logsPagination.pages" (click)="loadLogsPage(selectedEmployee, logsPagination.page + 1)">Next</button>
+                          </div>
+                        }
+                      }
+                    </div>
+                  </div>
+                }
 
                 <!-- Assign task -->
                 <div class="task-section">
@@ -173,9 +225,9 @@ import { marked } from 'marked';
         <!-- Manage tab (single project management) -->
         @if (activeTab === 'team' || activeTab === 'hire' || activeTab === 'comms') {
           <div class="project-selector">
-            <label>Project:</label>
+            <label>Company:</label>
             <select [(ngModel)]="selectedProjectId" (ngModelChange)="onProjectChange()">
-              <option value="">-- Select a project --</option>
+              <option value="">-- Select a company --</option>
               @for (p of projects; track p._id) {
                 <option [value]="p._id">{{ p.name }}</option>
               }
@@ -188,7 +240,7 @@ import { marked } from 'marked';
               <div class="empty-state">
                 <mat-icon>group_add</mat-icon>
                 <h2>No employees yet</h2>
-                <p>Go to the Hire tab to add AI employees to this project.</p>
+                <p>Go to the Hire tab to add AI employees to this company.</p>
               </div>
             } @else {
               <div class="team-layout">
@@ -230,15 +282,74 @@ import { marked } from 'marked';
                         <span class="detail-title">{{ selectedEmployee.title }}</span>
                         <span class="detail-status" [class]="selectedEmployee.status">{{ selectedEmployee.status }}</span>
                       </div>
+                      <button class="logs-btn" (click)="openLogs(selectedEmployee)" matTooltip="View Logs">
+                        <mat-icon>receipt_long</mat-icon>
+                      </button>
                       <button class="fire-btn" (click)="fireEmployee(selectedEmployee)" matTooltip="Remove employee">
                         <mat-icon>person_remove</mat-icon>
                       </button>
                     </div>
                     <p class="detail-desc">{{ selectedEmployee.description }}</p>
 
-                    <!-- Assign task (prominent, at the top) -->
+                    <!-- Logs panel (Manage tab) -->
+                    @if (showLogsFor === selectedEmployee._id) {
+                      <div class="logs-panel">
+                        <div class="logs-header">
+                          <h3><mat-icon>receipt_long</mat-icon> Execution Logs</h3>
+                          <div class="logs-filters">
+                            <button class="filter-chip" [class.active]="logsFilter === ''" (click)="logsFilter = ''; loadLogs(selectedEmployee)">All</button>
+                            <button class="filter-chip" [class.active]="logsFilter === 'task_start'" (click)="logsFilter = 'task_start'; loadLogs(selectedEmployee)">Start</button>
+                            <button class="filter-chip" [class.active]="logsFilter === 'task_complete'" (click)="logsFilter = 'task_complete'; loadLogs(selectedEmployee)">Complete</button>
+                            <button class="filter-chip" [class.active]="logsFilter === 'task_fail'" (click)="logsFilter = 'task_fail'; loadLogs(selectedEmployee)">Failed</button>
+                            <button class="filter-chip" [class.active]="logsFilter === 'tool_use'" (click)="logsFilter = 'tool_use'; loadLogs(selectedEmployee)">Tools</button>
+                            <button class="filter-chip" [class.active]="logsFilter === 'text'" (click)="logsFilter = 'text'; loadLogs(selectedEmployee)">Text</button>
+                            <button class="filter-chip" [class.active]="logsFilter === 'error'" (click)="logsFilter = 'error'; loadLogs(selectedEmployee)">Errors</button>
+                          </div>
+                          <button class="logs-close" (click)="showLogsFor = ''"><mat-icon>close</mat-icon></button>
+                        </div>
+                        <div class="logs-body">
+                          @if (logsLoading) {
+                            <div class="logs-loading"><mat-spinner diameter="20"></mat-spinner> Loading...</div>
+                          } @else if (employeeLogs.length === 0) {
+                            <div class="logs-empty">No logs found</div>
+                          } @else {
+                            @for (log of employeeLogs; track log._id) {
+                              <div class="log-row" [class]="log.category">
+                                <span class="log-time">{{ log.createdAt | date:'MM/dd HH:mm:ss' }}</span>
+                                <span class="log-cat">{{ logIcon(log.category) }} {{ log.category }}</span>
+                                <span class="log-content">{{ log.content }}</span>
+                                @if (log.metadata?.tool) {
+                                  <span class="log-tool">{{ log.metadata.tool }}</span>
+                                }
+                              </div>
+                            }
+                            @if (logsPagination.pages > 1) {
+                              <div class="logs-pagination">
+                                <button [disabled]="logsPagination.page <= 1" (click)="loadLogsPage(selectedEmployee, logsPagination.page - 1)">Prev</button>
+                                <span>{{ logsPagination.page }} / {{ logsPagination.pages }} ({{ logsPagination.total }} entries)</span>
+                                <button [disabled]="logsPagination.page >= logsPagination.pages" (click)="loadLogsPage(selectedEmployee, logsPagination.page + 1)">Next</button>
+                              </div>
+                            }
+                          }
+                        </div>
+                      </div>
+                    }
+
+                    <!-- Assign task + controls -->
                     <div class="task-section">
-                      <h3>Assign Task</h3>
+                      <div class="task-header-row">
+                        <h3>Task</h3>
+                        <div class="task-controls">
+                          @if (selectedEmployee.status === 'working') {
+                            <button class="ctrl-btn stop" (click)="stopEmployee()" matTooltip="Stop current task">
+                              <mat-icon>stop</mat-icon>
+                            </button>
+                            <button class="ctrl-btn restart" (click)="restartEmployee()" matTooltip="Stop and re-run last task">
+                              <mat-icon>restart_alt</mat-icon>
+                            </button>
+                          }
+                        </div>
+                      </div>
                       @if (taskError) {
                         <div class="task-error">
                           <mat-icon>error</mat-icon> {{ taskError }}
@@ -247,32 +358,100 @@ import { marked } from 'marked';
                       <div class="task-input-row">
                         <textarea class="task-input" [(ngModel)]="taskInput" placeholder="Describe the task for this employee..."
                                   [disabled]="selectedEmployee.status === 'working'" rows="2"></textarea>
-                        <button class="task-send" (click)="assignTask()" [disabled]="!taskInput.trim() || selectedEmployee.status === 'working'">
-                          <mat-icon>{{ selectedEmployee.status === 'working' ? 'hourglass_top' : 'play_arrow' }}</mat-icon>
+                        <button class="task-send" (click)="assignTask()" [disabled]="!taskInput.trim() || selectedEmployee.status === 'working'"
+                                matTooltip="Start task">
+                          <mat-icon>play_arrow</mat-icon>
                         </button>
                       </div>
                     </div>
 
-                    <!-- Live output -->
-                    @if (agentEntries.length) {
-                      <div class="agent-output">
-                        <div class="agent-bar" [class.done]="!agentRunning && !taskError" [class.errored]="!agentRunning && taskError">
-                          @if (agentRunning) {
-                            <mat-icon class="pulse">terminal</mat-icon> Working...
-                          } @else {
-                            <mat-icon>check_circle</mat-icon> Finished
-                          }
+                    <!-- Send mid-execution message -->
+                    @if (selectedEmployee.status === 'working') {
+                      <div class="inject-section">
+                        <div class="inject-row">
+                          <input class="inject-input" [(ngModel)]="injectMessage" placeholder="Send message to working agent..."
+                                 (keydown.enter)="sendMessageToEmployee()" />
+                          <button class="inject-btn" (click)="sendMessageToEmployee()" [disabled]="!injectMessage.trim() || sendingMessage"
+                                  matTooltip="Inject message into running agent session">
+                            @if (sendingMessage) {
+                              <mat-spinner diameter="16"></mat-spinner>
+                            } @else {
+                              <mat-icon>send</mat-icon>
+                            }
+                          </button>
                         </div>
-                        <div class="agent-log">
+                        @if (injectResult) {
+                          <div class="inject-result" [class.success]="injectResult.delivered">
+                            <mat-icon>{{ injectResult.delivered ? 'check_circle' : 'warning' }}</mat-icon>
+                            {{ injectResult.detail }}
+                          </div>
+                        }
+                      </div>
+                    }
+
+                    <!-- Live output + expandable logs -->
+                    <div class="agent-output">
+                      <div class="agent-bar" [class.done]="!agentRunning && !taskError && agentEntries.length" [class.errored]="!agentRunning && taskError"
+                           (click)="logsExpanded = !logsExpanded">
+                        @if (agentRunning) {
+                          <mat-icon class="pulse">terminal</mat-icon> Working...
+                        } @else if (taskError) {
+                          <mat-icon>error</mat-icon> Failed
+                        } @else if (agentEntries.length) {
+                          <mat-icon>check_circle</mat-icon> Finished
+                        } @else {
+                          <mat-icon>history</mat-icon> Logs
+                        }
+                        <span class="log-count">({{ agentEntries.length + historicalLogs.length }})</span>
+                        <span class="spacer"></span>
+                        <button class="expand-btn" (click)="$event.stopPropagation(); logsExpanded = !logsExpanded">
+                          <mat-icon>{{ logsExpanded ? 'expand_less' : 'expand_more' }}</mat-icon>
+                        </button>
+                        @if (!agentRunning && !logsExpanded && historicalLogs.length === 0) {
+                          <button class="expand-btn" (click)="$event.stopPropagation(); loadHistoricalLogs()" matTooltip="Load logs from DB">
+                            <mat-icon>refresh</mat-icon>
+                          </button>
+                        }
+                      </div>
+                      @if (logsExpanded) {
+                        <div class="agent-log expanded">
+                          @if (historicalLogs.length) {
+                            <div class="log-section-label">Previous logs</div>
+                            @for (entry of historicalLogs; track $index) {
+                              <div class="log-entry" [class]="entry.category">
+                                <span class="log-time">{{ entry.time }}</span>
+                                <span class="log-cat">{{ entry.icon }}</span>
+                                <span>{{ entry.content }}</span>
+                              </div>
+                            }
+                            @if (agentEntries.length) {
+                              <div class="log-section-label">Current session</div>
+                            }
+                          }
                           @for (entry of agentEntries; track $index) {
                             <div class="log-entry" [class]="entry.type">
                               @if (entry.tool) { <span class="tool-badge">{{ entry.tool }}</span> }
                               <span>{{ entry.content }}</span>
                             </div>
                           }
+                          @if (!agentEntries.length && !historicalLogs.length) {
+                            <div class="log-empty">No logs yet</div>
+                          }
                         </div>
-                      </div>
-                    }
+                      } @else if (agentEntries.length) {
+                        <div class="agent-log">
+                          @for (entry of agentEntries.slice(-10); track $index) {
+                            <div class="log-entry" [class]="entry.type">
+                              @if (entry.tool) { <span class="tool-badge">{{ entry.tool }}</span> }
+                              <span>{{ entry.content }}</span>
+                            </div>
+                          }
+                          @if (agentEntries.length > 10) {
+                            <div class="log-more" (click)="logsExpanded = true">↑ {{ agentEntries.length - 10 }} more entries — click to expand</div>
+                          }
+                        </div>
+                      }
+                    </div>
 
                     <!-- Skills -->
                     <div class="skills-section">
@@ -502,8 +681,8 @@ import { marked } from 'marked';
         @if (!selectedProjectId && (activeTab === 'team' || activeTab === 'hire' || activeTab === 'comms')) {
           <div class="empty-state">
             <mat-icon>business</mat-icon>
-            <h2>Select a project</h2>
-            <p>Choose a project above to manage its AI employees.</p>
+            <h2>Select a company</h2>
+            <p>Choose a company above to manage its AI employees.</p>
           </div>
         }
       }
@@ -563,7 +742,10 @@ import { marked } from 'marked';
       background: var(--color-border-light); color: var(--color-text-subtle);
     }
     .project-col-body { padding: 8px; display: flex; flex-direction: column; gap: 6px; max-height: 400px; overflow-y: auto; }
-    .project-col-empty { text-align: center; padding: 1.5rem 0.5rem; font-size: 0.78rem; color: var(--color-text-subtle); font-style: italic; }
+    .project-col-empty { text-align: center; padding: 1.5rem 0.5rem; font-size: 0.78rem; color: var(--color-text-subtle); font-style: italic; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .hire-quick-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px dashed var(--color-primary); border-radius: var(--radius-sm); background: none; color: var(--color-primary); font-family: inherit; font-size: .72rem; font-weight: 600; cursor: pointer; }
+    .hire-quick-btn mat-icon { font-size: 14px; width: 14px; height: 14px; }
+    .hire-quick-btn:hover { background: rgba(212,175,55,.08); }
 
     .mini-card {
       display: flex; align-items: center; gap: 8px; padding: 8px 10px;
@@ -645,11 +827,44 @@ import { marked } from 'marked';
     .detail-status.idle { color: var(--color-text-subtle); }
     .detail-status.working { color: #22c55e; }
     .detail-desc { font-size: 0.85rem; color: var(--color-text-subtle); margin: 0 0 1rem; line-height: 1.5; }
+    .logs-btn {
+      border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); background: none;
+      color: var(--color-text-subtle); cursor: pointer; padding: 6px; display: flex;
+    }
+    .logs-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
     .fire-btn {
       border: 1px solid #ef444440; border-radius: var(--radius-sm); background: none;
       color: #ef4444; cursor: pointer; padding: 6px; display: flex;
     }
     .fire-btn:hover { background: #ef444410; }
+
+    /* Logs panel */
+    .logs-panel { background: #0d1117; border: 1px solid var(--color-border-light); border-radius: var(--radius-md); margin-bottom: 1rem; overflow: hidden; }
+    .logs-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--color-border-light); }
+    .logs-header h3 { margin: 0; font-size: .85rem; display: flex; align-items: center; gap: 6px; color: var(--color-text); flex-shrink: 0; }
+    .logs-header h3 mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .logs-filters { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
+    .filter-chip { padding: 2px 8px; border: 1px solid var(--color-border-light); border-radius: 100px; background: none; color: var(--color-text-subtle); font-family: inherit; font-size: .68rem; cursor: pointer; }
+    .filter-chip.active { border-color: var(--color-primary); color: var(--color-primary); background: rgba(212,175,55,.08); }
+    .logs-close { border: none; background: none; color: var(--color-text-subtle); cursor: pointer; padding: 4px; display: flex; }
+    .logs-close:hover { color: var(--color-text); }
+    .logs-body { max-height: 400px; overflow-y: auto; font-family: 'Fira Code', monospace; font-size: .75rem; }
+    .logs-loading, .logs-empty { padding: 1.5rem; text-align: center; color: var(--color-text-subtle); display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .log-row { display: flex; gap: 8px; padding: 4px 14px; border-bottom: 1px solid rgba(255,255,255,.03); color: #c9d1d9; align-items: flex-start; }
+    .log-row:hover { background: rgba(255,255,255,.02); }
+    .log-row.task_start { color: #22c55e; }
+    .log-row.task_complete { color: #22c55e; }
+    .log-row.task_fail { color: #f85149; }
+    .log-row.error { color: #f85149; }
+    .log-row.tool_use { color: #d4af37; }
+    .log-time { flex-shrink: 0; color: #8b949e; min-width: 100px; }
+    .log-cat { flex-shrink: 0; min-width: 100px; font-weight: 600; }
+    .log-content { flex: 1; word-break: break-word; white-space: pre-wrap; }
+    .log-tool { flex-shrink: 0; padding: 1px 6px; background: rgba(212,175,55,.1); border-radius: 4px; font-size: .65rem; color: var(--color-primary); }
+    .logs-pagination { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 8px; border-top: 1px solid var(--color-border-light); }
+    .logs-pagination button { padding: 3px 10px; border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); background: none; color: var(--color-text); font-family: inherit; font-size: .72rem; cursor: pointer; }
+    .logs-pagination button:disabled { opacity: .3; cursor: not-allowed; }
+    .logs-pagination span { font-size: .72rem; color: var(--color-text-subtle); }
 
     /* Skills section */
     .skills-section { margin-bottom: 1rem; }
@@ -716,6 +931,46 @@ import { marked } from 'marked';
     }
     .task-error mat-icon { font-size: 16px; width: 16px; height: 16px; flex-shrink: 0; }
 
+    /* Message injection */
+    .inject-section { margin-top: 10px; }
+    .inject-row { display: flex; gap: 6px; align-items: center; }
+    .inject-input {
+      flex: 1; padding: 8px 12px; border: 1px solid #22c55e40; border-radius: var(--radius-sm);
+      background: var(--color-bg); color: var(--color-text); font-family: inherit; font-size: 0.82rem;
+      outline: none;
+    }
+    .inject-input:focus { border-color: #22c55e; }
+    .inject-input::placeholder { color: var(--color-text-subtle); }
+    .inject-btn {
+      width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+      border: none; border-radius: var(--radius-sm); background: #22c55e;
+      color: #0A0A0A; cursor: pointer; flex-shrink: 0;
+    }
+    .inject-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .inject-btn mat-icon { font-size: 18px; width: 18px; height: 18px; }
+    .inject-result {
+      display: flex; align-items: center; gap: 6px; margin-top: 6px;
+      font-size: 0.75rem; color: #f59e0b; padding: 4px 8px;
+      border-radius: var(--radius-sm); background: #f59e0b10;
+    }
+    .inject-result.success { color: #22c55e; background: #22c55e10; }
+    .inject-result mat-icon { font-size: 14px; width: 14px; height: 14px; }
+
+    /* Task controls */
+    .task-header-row { display: flex; align-items: center; justify-content: space-between; }
+    .task-header-row h3 { margin: 0; }
+    .task-controls { display: flex; gap: 4px; }
+    .ctrl-btn {
+      width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: none; cursor: pointer; transition: all 0.15s;
+    }
+    .ctrl-btn mat-icon { font-size: 18px; width: 18px; height: 18px; }
+    .ctrl-btn.stop { color: #ef4444; }
+    .ctrl-btn.stop:hover { background: #ef444412; border-color: #ef4444; }
+    .ctrl-btn.restart { color: #f59e0b; }
+    .ctrl-btn.restart:hover { background: #f59e0b12; border-color: #f59e0b; }
+
     /* Agent output */
     .agent-output {
       margin-top: 12px; border: 1px solid var(--color-border-light);
@@ -724,11 +979,21 @@ import { marked } from 'marked';
     .agent-bar {
       display: flex; align-items: center; gap: 8px; padding: 8px 12px;
       background: rgba(34,197,94,0.06); border-bottom: 1px solid var(--color-border-light);
-      font-size: 0.82rem; font-weight: 600; color: #22c55e;
+      font-size: 0.82rem; font-weight: 600; color: #22c55e; cursor: pointer;
+      user-select: none;
     }
     .agent-bar mat-icon { font-size: 16px; width: 16px; height: 16px; }
     .agent-bar.done { background: rgba(34,197,94,0.06); color: #22c55e; }
     .agent-bar.errored { background: rgba(239,68,68,0.06); color: #ef4444; }
+    .log-count { font-weight: 400; font-size: 0.72rem; color: var(--color-text-subtle); }
+    .agent-bar .spacer { flex: 1; }
+    .expand-btn {
+      width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+      border: none; background: none; color: var(--color-text-subtle); cursor: pointer;
+      border-radius: var(--radius-sm);
+    }
+    .expand-btn:hover { color: var(--color-text); background: rgba(255,255,255,0.05); }
+    .expand-btn mat-icon { font-size: 18px; width: 18px; height: 18px; }
     .pulse { animation: pulse 1.5s infinite; }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
     .agent-log {
@@ -736,7 +1001,21 @@ import { marked } from 'marked';
       font-family: 'Fira Code', monospace; font-size: 0.72rem; line-height: 1.5;
       background: var(--color-bg); color: var(--color-text-subtle);
     }
+    .agent-log.expanded { max-height: 600px; }
     .log-entry { white-space: pre-wrap; word-break: break-all; }
+    .log-time { color: var(--color-text-subtle); margin-right: 6px; font-size: 0.65rem; opacity: 0.7; }
+    .log-cat { margin-right: 4px; }
+    .log-section-label {
+      font-size: 0.68rem; font-weight: 700; color: var(--color-primary);
+      padding: 6px 0 2px; border-bottom: 1px solid var(--color-border-light); margin-bottom: 4px;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .log-more {
+      text-align: center; font-size: 0.72rem; color: var(--color-primary); cursor: pointer;
+      padding: 6px; border-top: 1px solid var(--color-border-light);
+    }
+    .log-more:hover { background: rgba(212,175,55,0.06); }
+    .log-empty { text-align: center; padding: 1rem; color: var(--color-text-subtle); font-size: 0.8rem; }
     .log-entry.text { color: var(--color-text); }
     .log-entry.error { color: #ef4444; }
     .tool-badge { font-weight: 700; color: #3b82f6; margin-right: 6px; padding: 1px 5px; background: #3b82f610; border-radius: 3px; }
@@ -940,6 +1219,23 @@ export class HrComponent implements OnInit, OnDestroy {
   agentEntries: { type: string; content: string; tool?: string }[] = [];
   private agentSub: Subscription | null = null;
 
+  // Message injection
+  injectMessage = '';
+  sendingMessage = false;
+  injectResult: { delivered: boolean; detail: string } | null = null;
+
+  // Logs
+  logsExpanded = false;
+  historicalLogs: { category: string; icon: string; time: string; content: string }[] = [];
+  private lastTaskInput = '';
+
+  // Logs
+  showLogsFor = '';
+  logsFilter = '';
+  logsLoading = false;
+  employeeLogs: any[] = [];
+  logsPagination = { page: 1, pages: 1, total: 0 };
+
   // Comms
   comms: CommFile[] = [];
   commsLoading = false;
@@ -1057,6 +1353,44 @@ export class HrComponent implements OnInit, OnDestroy {
     });
   }
 
+  openLogs(emp: Employee): void {
+    if (this.showLogsFor === emp._id) {
+      this.showLogsFor = '';
+      return;
+    }
+    this.showLogsFor = emp._id!;
+    this.logsFilter = '';
+    this.loadLogs(emp);
+  }
+
+  loadLogs(emp: Employee): void {
+    this.loadLogsPage(emp, 1);
+  }
+
+  loadLogsPage(emp: Employee, page: number): void {
+    if (!emp?._id) return;
+    this.logsLoading = true;
+    this.employeeService.getLogs(emp._id, page, 100, this.logsFilter || undefined).subscribe({
+      next: (res) => {
+        this.employeeLogs = res.logs;
+        this.logsPagination = { page: res.page, pages: res.pages, total: res.total };
+        this.logsLoading = false;
+      },
+      error: () => {
+        this.employeeLogs = [];
+        this.logsLoading = false;
+      },
+    });
+  }
+
+  logIcon(category: string): string {
+    const icons: Record<string, string> = {
+      task_start: '🟢', task_complete: '✅', task_fail: '❌',
+      tool_use: '🔧', tool_result: '📤', text: '💬', error: '🚨', comms: '📝',
+    };
+    return icons[category] || '📋';
+  }
+
   fireEmployee(emp: Employee): void {
     if (!confirm(`Remove ${emp.name}?`)) return;
     this.employeeService.fire(emp._id!).subscribe({
@@ -1100,9 +1434,12 @@ export class HrComponent implements OnInit, OnDestroy {
 
   assignTask(): void {
     if (!this.selectedEmployee || !this.taskInput.trim()) return;
+    this.lastTaskInput = this.taskInput.trim();
     this.taskError = '';
     this.agentRunning = true;
     this.agentEntries = [];
+    this.historicalLogs = [];
+    this.logsExpanded = false;
     this.selectedEmployee.status = 'working';
 
     // Update the overview mini-card to show working status
@@ -1162,6 +1499,99 @@ export class HrComponent implements OnInit, OnDestroy {
         }
         this.loadEmployees();
         this.loadAllEmployees();
+      },
+    });
+  }
+
+  stopEmployee(): void {
+    if (!this.selectedEmployee) return;
+    this.employeeService.stopTask(this.selectedEmployee._id!).subscribe({
+      next: (res) => {
+        if (res.stopped) {
+          this.agentRunning = false;
+          this.agentSub?.unsubscribe();
+          this.agentSub = null;
+          this.agentEntries.push({ type: 'text', content: '⏹️ Stopped by user' });
+          if (this.selectedEmployee) {
+            this.selectedEmployee.status = 'idle';
+            this.updateOverviewStatus(this.selectedEmployee._id!, 'idle');
+          }
+          this.snackBar.open('Employee stopped', 'Close', { duration: 2000 });
+          this.loadEmployees();
+          this.loadAllEmployees();
+        }
+      },
+      error: () => this.snackBar.open('Failed to stop', 'Close', { duration: 3000 }),
+    });
+  }
+
+  restartEmployee(): void {
+    if (!this.selectedEmployee) return;
+    // Stop first, then re-assign the last task
+    const lastTask = this.selectedEmployee.taskHistory?.[this.selectedEmployee.taskHistory.length - 1];
+    const taskToRerun = this.lastTaskInput || lastTask?.description || '';
+    if (!taskToRerun) {
+      this.snackBar.open('No task to restart', 'Close', { duration: 2000 });
+      return;
+    }
+    this.employeeService.stopTask(this.selectedEmployee._id!).subscribe({
+      next: () => {
+        this.agentRunning = false;
+        this.agentSub?.unsubscribe();
+        this.agentSub = null;
+        if (this.selectedEmployee) {
+          this.selectedEmployee.status = 'idle';
+          this.updateOverviewStatus(this.selectedEmployee._id!, 'idle');
+        }
+        // Brief delay then re-assign
+        setTimeout(() => {
+          this.taskInput = taskToRerun;
+          this.assignTask();
+        }, 500);
+      },
+      error: () => this.snackBar.open('Failed to restart', 'Close', { duration: 3000 }),
+    });
+  }
+
+  loadHistoricalLogs(): void {
+    if (!this.selectedEmployee) return;
+    this.employeeService.getLogs(this.selectedEmployee._id!, 1, 200).subscribe({
+      next: (res) => {
+        const iconMap: Record<string, string> = {
+          task_start: '🟢', task_complete: '✅', task_fail: '❌',
+          tool_use: '🔧', tool_result: '📋', text: '💬',
+          error: '🚨', comms: '📝',
+        };
+        this.historicalLogs = res.logs.reverse().map((l: any) => ({
+          category: l.category,
+          icon: iconMap[l.category] || '📝',
+          time: new Date(l.createdAt).toLocaleTimeString(),
+          content: l.content,
+        }));
+        this.logsExpanded = true;
+      },
+      error: () => this.snackBar.open('Failed to load logs', 'Close', { duration: 3000 }),
+    });
+  }
+
+  sendMessageToEmployee(): void {
+    if (!this.selectedEmployee || !this.injectMessage.trim()) return;
+    this.sendingMessage = true;
+    this.injectResult = null;
+    this.employeeService.sendMessage(this.selectedEmployee._id!, this.injectMessage.trim()).subscribe({
+      next: (result) => {
+        this.injectResult = result;
+        this.sendingMessage = false;
+        if (result.delivered) {
+          this.agentEntries.push({ type: 'text', content: `📩 [You]: ${this.injectMessage.trim()}` });
+          this.injectMessage = '';
+          // Clear result after 5s
+          setTimeout(() => this.injectResult = null, 5000);
+        }
+      },
+      error: (err) => {
+        this.sendingMessage = false;
+        this.injectResult = { delivered: false, detail: err?.error?.error || err?.message || 'Failed to send message' };
       },
     });
   }

@@ -27,7 +27,7 @@ const COLORS = [
     <div class="gantt-page">
       <div class="page-header">
         <h1>Time Allocation</h1>
-        <p class="subtitle">Weekly hours distribution across your projects</p>
+        <p class="subtitle">Weekly hours distribution across your companies</p>
       </div>
 
       @if (loading) {
@@ -36,8 +36,8 @@ const COLORS = [
         </div>
       } @else if (data.length === 0) {
         <div class="empty-state">
-          <h2>No project data available</h2>
-          <p>Add projects with scheduled time to see the chart.</p>
+          <h2>No company data available</h2>
+          <p>Add companies with scheduled time to see the chart.</p>
         </div>
       } @else {
         <div class="chart-container">

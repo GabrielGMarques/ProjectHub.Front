@@ -11,6 +11,6 @@ export const routes: Routes = [
   { path: 'schedule', loadComponent: () => import('./pages/schedule/schedule.component').then(m => m.ScheduleComponent), canActivate: [authGuard] },
   { path: 'hr', loadComponent: () => import('./pages/hr/hr.component').then(m => m.HrComponent), canActivate: [authGuard] },
   { path: 'telemetry', loadComponent: () => import('./pages/telemetry/telemetry.component').then(m => m.TelemetryComponent), canActivate: [authGuard] },
-  { path: 'project/:id', loadComponent: () => import('./pages/project-detail/project-detail.component').then(m => m.ProjectDetailComponent), canActivate: [authGuard] },
+  { path: 'company/:id', loadComponent: () => import('./pages/project-detail/project-detail.component').then(m => m.ProjectDetailComponent), canActivate: [authGuard] },
   { path: '**', redirectTo: '/dashboard' },
 ];

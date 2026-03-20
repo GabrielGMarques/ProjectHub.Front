@@ -19,6 +19,7 @@ import { MarketingResearchComponent } from '../../components/marketing-research/
 import { AgentTerminalComponent } from '../../components/agent-terminal/agent-terminal.component';
 import { SkillsPanelComponent } from '../../components/skills-panel/skills-panel.component';
 import { FileExplorerComponent } from '../../components/file-explorer/file-explorer.component';
+import { EmployeeService } from '../../services/employee.service';
 
 @Component({
   selector: 'app-project-detail',
@@ -35,7 +36,7 @@ import { FileExplorerComponent } from '../../components/file-explorer/file-explo
         <div class="loading"><mat-spinner diameter="40"></mat-spinner></div>
       } @else if (!project) {
         <div class="empty-state">
-          <h2>Project not found</h2>
+          <h2>Company not found</h2>
           <a routerLink="/dashboard" class="back-link"><mat-icon>arrow_back</mat-icon> Back to Dashboard</a>
         </div>
       } @else {
@@ -102,6 +103,7 @@ import { FileExplorerComponent } from '../../components/file-explorer/file-explo
           <button class="tab" [class.active]="activeTab === 'marketing'" (click)="activeTab = 'marketing'"><mat-icon>campaign</mat-icon> Marketing</button>
           <button class="tab" [class.active]="activeTab === 'agent'" (click)="activeTab = 'agent'"><mat-icon>terminal</mat-icon> Agent</button>
           <button class="tab" [class.active]="activeTab === 'skills'" (click)="activeTab = 'skills'"><mat-icon>auto_fix_high</mat-icon> Skills</button>
+          <button class="tab" [class.active]="activeTab === 'employees'" (click)="loadEmployees(); activeTab = 'employees'"><mat-icon>groups</mat-icon> Team <span class="tab-badge" *ngIf="projectEmployees.length">{{ projectEmployees.length }}</span></button>
           <button class="tab" [class.active]="activeTab === 'files'" (click)="activeTab = 'files'"><mat-icon>folder_open</mat-icon> Files</button>
           <button class="tab" [class.active]="activeTab === 'settings'" (click)="openSettings()"><mat-icon>settings</mat-icon> Settings</button>
         </div>
@@ -109,7 +111,7 @@ import { FileExplorerComponent } from '../../components/file-explorer/file-explo
         @if (activeTab === 'settings') {
           <div class="settings-tab">
             <div class="settings-header">
-              <h2>Project Settings</h2>
+              <h2>Company Settings</h2>
               <button class="settings-save-btn" (click)="saveSettings()">
                 <mat-icon>check</mat-icon> Save Changes
               </button>
@@ -118,7 +120,7 @@ import { FileExplorerComponent } from '../../components/file-explorer/file-explo
               <div class="settings-section">
                 <h3><mat-icon>info</mat-icon> General</h3>
                 <mat-form-field class="full-width" appearance="outline">
-                  <mat-label>Project Name</mat-label>
+                  <mat-label>Company Name</mat-label>
                   <input matInput formControlName="name" />
                 </mat-form-field>
                 <mat-form-field class="full-width" appearance="outline">
@@ -147,6 +149,13 @@ import { FileExplorerComponent } from '../../components/file-explorer/file-explo
                     <input matInput formControlName="niche" />
                   </mat-form-field>
                 </div>
+                <div class="holding-toggle">
+                  <label class="holding-label">
+                    <input type="checkbox" [checked]="project.onHolding" (change)="toggleHolding()" />
+                    <span class="holding-text">⏸️ On Holding</span>
+                    <span class="holding-hint">When on holding, Alfred will ignore this company</span>
+                  </label>
+                </div>
                 <mat-form-field class="full-width" appearance="outline">
                   <mat-label>Background Image URL</mat-label>
                   <input matInput formControlName="backgroundImage" />
@@ -154,12 +163,12 @@ import { FileExplorerComponent } from '../../components/file-explorer/file-explo
                 <mat-form-field class="full-width" appearance="outline">
                   <mat-label>Monetization Plan</mat-label>
                   <textarea matInput formControlName="monetizationPlan" rows="3"
-                    placeholder="How will this project generate revenue?"></textarea>
+                    placeholder="How will this company generate revenue?"></textarea>
                 </mat-form-field>
               </div>
 
               <div class="settings-section">
-                <h3><mat-icon>snippet_folder</mat-icon> Project Folders</h3>
+                <h3><mat-icon>snippet_folder</mat-icon> Company Folders</h3>
                 <p class="settings-hint">The first folder is the agent's working directory. All folders are accessible from the Files tab.</p>
                 @for (folder of editFolders; track $index) {
                   <div class="folder-row">
@@ -190,7 +199,7 @@ import { FileExplorerComponent } from '../../components/file-explorer/file-explo
                   class="presentation-textarea"
                   formControlName="presentation"
                   rows="10"
-                  placeholder="# My Project&#10;&#10;Describe your project, goals, target audience, tech stack, unique value proposition, etc.&#10;&#10;This context will be available to all AI tools."></textarea>
+                  placeholder="# My Company&#10;&#10;Describe your company, goals, target audience, tech stack, unique value proposition, etc.&#10;&#10;This context will be available to all AI tools."></textarea>
               </div>
             </form>
           </div>
@@ -200,6 +209,96 @@ import { FileExplorerComponent } from '../../components/file-explorer/file-explo
           <app-agent-terminal [project]="project"></app-agent-terminal>
         } @else if (activeTab === 'skills') {
           <app-skills-panel [project]="project" [availableModels]="availableModels"></app-skills-panel>
+        } @else if (activeTab === 'employees') {
+          <div class="employees-tab">
+            @if (projectEmployees.length === 0) {
+              <div class="empty-employees">
+                <mat-icon>groups</mat-icon>
+                <h3>No employees assigned</h3>
+                <p>Go to the <a routerLink="/hr">HR Department</a> to hire employees for this company.</p>
+              </div>
+            } @else {
+              <div class="employees-grid">
+                @for (emp of projectEmployees; track emp._id) {
+                  <div class="emp-card" [class.working]="emp.status === 'working'">
+                    <div class="emp-card-header">
+                      <span class="emp-avatar">{{ emp.avatar }}</span>
+                      <div class="emp-meta">
+                        <span class="emp-name">{{ emp.name }}</span>
+                        <span class="emp-title">{{ emp.title }}</span>
+                      </div>
+                      <span class="emp-status-badge" [class]="emp.status">
+                        @if (emp.status === 'working') {
+                          <mat-spinner diameter="12"></mat-spinner>
+                        }
+                        {{ emp.status }}
+                      </span>
+                    </div>
+                    <div class="emp-specialties">
+                      @for (s of emp.specialties; track s) {
+                        <span class="emp-spec">{{ s }}</span>
+                      }
+                    </div>
+                    @if (emp.currentTask) {
+                      <div class="emp-current-task">
+                        <mat-icon>engineering</mat-icon>
+                        <span>{{ emp.taskHistory[emp.taskHistory.length - 1]?.description || 'Working...' }}</span>
+                      </div>
+                    }
+                    @if (emp.taskHistory?.length) {
+                      <div class="emp-history-summary">
+                        <span class="emp-stat completed">{{ countTasks(emp, 'completed') }} done</span>
+                        <span class="emp-stat failed">{{ countTasks(emp, 'failed') }} failed</span>
+                        <span class="emp-stat">{{ emp.taskHistory.length }} total</span>
+                      </div>
+                    }
+                    <div class="emp-actions">
+                      @if (emp.lastActivity) {
+                        <span class="emp-last-active">Last active: {{ emp.lastActivity | date:'short' }}</span>
+                      }
+                      <button class="emp-logs-btn" (click)="toggleEmpLogs(emp)">
+                        <mat-icon>receipt_long</mat-icon> Logs
+                      </button>
+                    </div>
+                    @if (empLogsOpen === emp._id) {
+                      <div class="emp-logs-panel">
+                        <div class="emp-logs-filters">
+                          <button class="emp-filter" [class.active]="empLogsFilter === ''" (click)="empLogsFilter = ''; loadEmpLogs(emp)">All</button>
+                          <button class="emp-filter" [class.active]="empLogsFilter === 'tool_use'" (click)="empLogsFilter = 'tool_use'; loadEmpLogs(emp)">Tools</button>
+                          <button class="emp-filter" [class.active]="empLogsFilter === 'text'" (click)="empLogsFilter = 'text'; loadEmpLogs(emp)">Text</button>
+                          <button class="emp-filter" [class.active]="empLogsFilter === 'error'" (click)="empLogsFilter = 'error'; loadEmpLogs(emp)">Errors</button>
+                          <button class="emp-filter" [class.active]="empLogsFilter === 'task_complete'" (click)="empLogsFilter = 'task_complete'; loadEmpLogs(emp)">Done</button>
+                          <button class="emp-filter" [class.active]="empLogsFilter === 'task_fail'" (click)="empLogsFilter = 'task_fail'; loadEmpLogs(emp)">Failed</button>
+                        </div>
+                        <div class="emp-logs-list">
+                          @if (empLogsLoading) {
+                            <div class="emp-logs-load"><mat-spinner diameter="16"></mat-spinner></div>
+                          } @else if (empLogsList.length === 0) {
+                            <div class="emp-logs-empty">No logs</div>
+                          } @else {
+                            @for (log of empLogsList; track log._id) {
+                              <div class="emp-log-row" [class]="log.category">
+                                <span class="elr-time">{{ log.createdAt | date:'MM/dd HH:mm' }}</span>
+                                <span class="elr-cat">{{ log.category }}</span>
+                                <span class="elr-content">{{ log.content }}</span>
+                              </div>
+                            }
+                          }
+                        </div>
+                        @if (empLogsPagination.pages > 1) {
+                          <div class="emp-logs-pager">
+                            <button [disabled]="empLogsPagination.page <= 1" (click)="loadEmpLogsPage(emp, empLogsPagination.page - 1)">←</button>
+                            <span>{{ empLogsPagination.page }}/{{ empLogsPagination.pages }}</span>
+                            <button [disabled]="empLogsPagination.page >= empLogsPagination.pages" (click)="loadEmpLogsPage(emp, empLogsPagination.page + 1)">→</button>
+                          </div>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          </div>
         } @else if (activeTab === 'files') {
           <app-file-explorer [project]="project" (projectUpdated)="project = $event"></app-file-explorer>
         }
@@ -345,8 +444,8 @@ import { FileExplorerComponent } from '../../components/file-explorer/file-explo
               @if (messages.length === 0) {
                 <div class="chat-welcome">
                   <mat-icon>smart_toy</mat-icon>
-                  <h3>Project Coach</h3>
-                  <p>Ask me anything about growing this project. I can also suggest changes to your todos, presentation, and more.</p>
+                  <h3>Company Coach</h3>
+                  <p>Ask me anything about growing this company. I can also suggest changes to your todos, presentation, and more.</p>
                   <div class="suggestions">
                     <button class="suggestion" (click)="sendSuggestion('How can I increase my MRR?')">How can I increase my MRR?</button>
                     <button class="suggestion" (click)="sendSuggestion('What should I focus on next?')">What should I focus on next?</button>
@@ -504,6 +603,12 @@ import { FileExplorerComponent } from '../../components/file-explorer/file-explo
     .impact-low { color: var(--color-success) !important; }
     .impact-medium { color: var(--color-warning) !important; }
     .impact-high { color: var(--color-danger) !important; }
+
+    .holding-toggle { margin-top: 8px; }
+    .holding-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85rem; }
+    .holding-label input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--color-primary); cursor: pointer; }
+    .holding-text { font-weight: 600; color: var(--color-text); }
+    .holding-hint { font-size: 0.75rem; color: var(--color-text-subtle); }
 
     .monetization-banner {
       display: flex; align-items: flex-start; gap: 10px;
@@ -838,6 +943,55 @@ import { FileExplorerComponent } from '../../components/file-explorer/file-explo
     .add-folder-btn mat-icon { font-size: 16px; width: 16px; height: 16px; }
 
     /* Settings tab */
+    .tab-badge { font-size: .65rem; background: var(--color-primary); color: #0A0A0A; padding: 1px 6px; border-radius: 100px; font-weight: 700; margin-left: 2px; }
+
+    .employees-tab { padding: 1rem 0; }
+    .empty-employees { text-align: center; padding: 3rem 1rem; color: var(--color-text-subtle); }
+    .empty-employees mat-icon { font-size: 48px; width: 48px; height: 48px; opacity: .3; }
+    .empty-employees h3 { margin: .5rem 0; color: var(--color-text); }
+    .empty-employees a { color: var(--color-primary); text-decoration: none; font-weight: 600; }
+    .employees-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+    .emp-card { background: var(--color-bg-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-md); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+    .emp-card.working { border-color: var(--color-primary); box-shadow: 0 0 0 1px rgba(212,175,55,.15); }
+    .emp-card-header { display: flex; align-items: center; gap: 10px; }
+    .emp-avatar { font-size: 1.6rem; }
+    .emp-meta { flex: 1; display: flex; flex-direction: column; }
+    .emp-name { font-weight: 700; font-size: .9rem; color: var(--color-text); }
+    .emp-title { font-size: .75rem; color: var(--color-text-subtle); }
+    .emp-status-badge { display: flex; align-items: center; gap: 4px; font-size: .68rem; font-weight: 700; padding: 3px 10px; border-radius: 100px; text-transform: uppercase; }
+    .emp-status-badge.idle { background: rgba(139,155,168,.1); color: #8b9ba8; }
+    .emp-status-badge.working { background: rgba(34,197,94,.1); color: var(--color-success); }
+    .emp-specialties { display: flex; flex-wrap: wrap; gap: 4px; }
+    .emp-spec { font-size: .68rem; padding: 2px 8px; background: rgba(212,175,55,.08); border-radius: 100px; color: var(--color-primary); font-weight: 500; }
+    .emp-current-task { display: flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--color-text-subtle); padding: 6px 8px; background: rgba(34,197,94,.05); border-radius: var(--radius-sm); }
+    .emp-current-task mat-icon { font-size: 16px; width: 16px; height: 16px; color: var(--color-success); }
+    .emp-history-summary { display: flex; gap: 10px; font-size: .72rem; }
+    .emp-stat { color: var(--color-text-subtle); }
+    .emp-stat.completed { color: var(--color-success); }
+    .emp-stat.failed { color: var(--color-danger); }
+    .emp-actions { display: flex; align-items: center; justify-content: space-between; }
+    .emp-last-active { font-size: .68rem; color: var(--color-text-subtle); }
+    .emp-logs-btn { display: flex; align-items: center; gap: 4px; padding: 3px 10px; border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); background: none; color: var(--color-text-subtle); font-family: inherit; font-size: .7rem; cursor: pointer; }
+    .emp-logs-btn mat-icon { font-size: 14px; width: 14px; height: 14px; }
+    .emp-logs-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    .emp-logs-panel { background: #0d1117; border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); overflow: hidden; font-family: 'Fira Code', monospace; font-size: .72rem; }
+    .emp-logs-filters { display: flex; gap: 3px; padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.05); flex-wrap: wrap; }
+    .emp-filter { padding: 1px 6px; border: 1px solid var(--color-border-light); border-radius: 100px; background: none; color: var(--color-text-subtle); font-family: inherit; font-size: .62rem; cursor: pointer; }
+    .emp-filter.active { border-color: var(--color-primary); color: var(--color-primary); }
+    .emp-logs-list { max-height: 250px; overflow-y: auto; }
+    .emp-logs-load, .emp-logs-empty { padding: 1rem; text-align: center; color: var(--color-text-subtle); }
+    .emp-log-row { display: flex; gap: 6px; padding: 3px 8px; border-bottom: 1px solid rgba(255,255,255,.02); color: #c9d1d9; }
+    .emp-log-row.task_complete, .emp-log-row.task_start { color: #22c55e; }
+    .emp-log-row.task_fail, .emp-log-row.error { color: #f85149; }
+    .emp-log-row.tool_use { color: #d4af37; }
+    .elr-time { flex-shrink: 0; color: #8b949e; min-width: 80px; }
+    .elr-cat { flex-shrink: 0; min-width: 80px; font-weight: 600; font-size: .65rem; }
+    .elr-content { flex: 1; word-break: break-word; white-space: pre-wrap; }
+    .emp-logs-pager { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 4px; border-top: 1px solid rgba(255,255,255,.05); }
+    .emp-logs-pager button { padding: 2px 8px; border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); background: none; color: var(--color-text); cursor: pointer; font-size: .68rem; }
+    .emp-logs-pager button:disabled { opacity: .3; }
+    .emp-logs-pager span { font-size: .68rem; color: var(--color-text-subtle); }
+
     .settings-tab { padding: 1rem 0; }
     .settings-header {
       display: flex; align-items: center; justify-content: space-between;
@@ -903,7 +1057,13 @@ export class ProjectDetailComponent implements OnInit {
   project: Project | null = null;
   loading = true;
   isEditing = false;
-  activeTab: 'overview' | 'marketing' | 'agent' | 'skills' | 'files' | 'settings' = 'overview';
+  activeTab: 'overview' | 'marketing' | 'agent' | 'skills' | 'employees' | 'files' | 'settings' = 'overview';
+  projectEmployees: any[] = [];
+  empLogsOpen = '';
+  empLogsFilter = '';
+  empLogsLoading = false;
+  empLogsList: any[] = [];
+  empLogsPagination = { page: 1, pages: 1, total: 0 };
   form!: FormGroup;
 
   // Todos
@@ -935,6 +1095,7 @@ export class ProjectDetailComponent implements OnInit {
   constructor(
     private route: ActivatedRoute,
     private projectService: ProjectService,
+    private employeeService: EmployeeService,
     private snackBar: MatSnackBar,
     private fb: FormBuilder,
     private sanitizer: DomSanitizer,
@@ -1011,6 +1172,42 @@ export class ProjectDetailComponent implements OnInit {
     return (this.doneCount / total) * 100;
   }
 
+  // Employees
+  loadEmployees(): void {
+    if (!this.project?._id) return;
+    this.employeeService.getByProject(this.project._id).subscribe({
+      next: (emps) => { this.projectEmployees = emps; },
+      error: () => { this.projectEmployees = []; },
+    });
+  }
+
+  countTasks(emp: any, status: string): number {
+    return (emp.taskHistory || []).filter((t: any) => t.status === status).length;
+  }
+
+  toggleEmpLogs(emp: any): void {
+    if (this.empLogsOpen === emp._id) { this.empLogsOpen = ''; return; }
+    this.empLogsOpen = emp._id;
+    this.empLogsFilter = '';
+    this.loadEmpLogs(emp);
+  }
+
+  loadEmpLogs(emp: any): void {
+    this.loadEmpLogsPage(emp, 1);
+  }
+
+  loadEmpLogsPage(emp: any, page: number): void {
+    this.empLogsLoading = true;
+    this.employeeService.getLogs(emp._id, page, 50, this.empLogsFilter || undefined).subscribe({
+      next: (res) => {
+        this.empLogsList = res.logs;
+        this.empLogsPagination = { page: res.page, pages: res.pages, total: res.total };
+        this.empLogsLoading = false;
+      },
+      error: () => { this.empLogsList = []; this.empLogsLoading = false; },
+    });
+  }
+
   // Settings
   openSettings(): void {
     this.initForm();
@@ -1028,9 +1225,21 @@ export class ProjectDetailComponent implements OnInit {
         this.project = updated;
         if (!this.project.todos) this.project.todos = [];
         this.updateParsedPresentation();
-        this.snackBar.open('Project updated', 'Close', { duration: 2000 });
+        this.snackBar.open('Company updated', 'Close', { duration: 2000 });
       },
-      error: () => this.snackBar.open('Failed to update project', 'Close', { duration: 3000 }),
+      error: () => this.snackBar.open('Failed to update company', 'Close', { duration: 3000 }),
+    });
+  }
+
+  toggleHolding(): void {
+    if (!this.project?._id) return;
+    const newValue = !this.project.onHolding;
+    this.projectService.update(this.project._id, { onHolding: newValue }).subscribe({
+      next: (updated) => {
+        this.project = updated;
+        this.snackBar.open(newValue ? 'Company on holding' : 'Company reactivated', 'Close', { duration: 2000 });
+      },
+      error: () => this.snackBar.open('Failed to update', 'Close', { duration: 3000 }),
     });
   }
 
@@ -1284,7 +1493,7 @@ export class ProjectDetailComponent implements OnInit {
   getActionLabel(action: CoachAction): string {
     switch (action.type) {
       case 'add_todos': return `Add ${action.items?.length || 0} item(s) to TODO list`;
-      case 'update_presentation': return 'Update project presentation';
+      case 'update_presentation': return 'Update company presentation';
       case 'update_field': return `Update ${action.field}`;
       default: return 'Suggested action';
     }

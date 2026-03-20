@@ -17,13 +17,13 @@ import { User } from '../../models/user.model';
     <nav class="navbar">
       <div class="navbar-inner">
         <a class="logo" routerLink="/">
-          <span class="logo-icon">P</span>
-          ProjectsHub
+          <span class="logo-icon">C</span>
+          CompaniesHub
         </a>
         @if (currentProjectName) {
           <div class="project-indicator">
             <mat-icon class="pi-sep">chevron_right</mat-icon>
-            <a class="pi-name" [routerLink]="['/project', currentProjectId]">{{ currentProjectName }}</a>
+            <a class="pi-name" [routerLink]="['/company', currentProjectId]">{{ currentProjectName }}</a>
           </div>
         }
         <span class="spacer"></span>
@@ -260,7 +260,7 @@ export class NavbarComponent implements OnInit, OnDestroy {
   }
 
   private checkProjectRoute(url: string): void {
-    const match = url.match(/\/project\/([a-f0-9]+)/);
+    const match = url.match(/\/company\/([a-f0-9]+)/);
     if (match) {
       const id = match[1];
       if (id !== this.currentProjectId) {

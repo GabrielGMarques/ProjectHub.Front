@@ -61,7 +61,7 @@ const COLORS = [
     <div class="burndown-page">
       <div class="page-header">
         <h1>Burndown</h1>
-        <p class="subtitle">All your todos across active projects</p>
+        <p class="subtitle">All your todos across active companies</p>
       </div>
 
       <!-- Strategic Advisor Chat -->
@@ -75,7 +75,7 @@ const COLORS = [
         <div class="empty-state">
           <mat-icon class="empty-icon">checklist</mat-icon>
           <h2>No todos yet</h2>
-          <p>Add todos to projects that have time allocated to see them here.</p>
+          <p>Add todos to companies that have time allocated to see them here.</p>
         </div>
       } @else {
         <!-- Stats + Chart row -->
@@ -180,7 +180,7 @@ const COLORS = [
                     <mat-icon>drag_indicator</mat-icon>
                   </div>
                   <span class="color-dot" [style.backgroundColor]="group.color"></span>
-                  <a class="group-name" [routerLink]="['/project', group.project._id]">{{ group.project.name }}</a>
+                  <a class="group-name" [routerLink]="['/company', group.project._id]">{{ group.project.name }}</a>
                   <span class="group-hours">{{ group.weeklyHours }}h/w</span>
                   <span class="group-count">{{ group.doneTodos }}/{{ group.totalTodos }}</span>
                   <button
@@ -940,7 +940,7 @@ export class BurndownComponent implements OnInit {
         this.loading = false;
       },
       error: () => {
-        this.snackBar.open('Failed to load projects', 'Close', { duration: 3000 });
+        this.snackBar.open('Failed to load companies', 'Close', { duration: 3000 });
         this.loading = false;
       },
     });

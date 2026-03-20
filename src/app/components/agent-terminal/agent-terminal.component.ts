@@ -72,14 +72,14 @@ interface TerminalEntry {
           <mat-icon>info</mat-icon>
           <div>
             <strong>Folders required</strong>
-            <p>Add folders to the project in Edit mode to use the Claude Code agent. This tells the agent where your project files are on disk.</p>
+            <p>Add folders to the company in Edit mode to use the Claude Code agent. This tells the agent where your company files are on disk.</p>
           </div>
         </div>
       } @else {
         <div class="terminal-output" #terminalOutput>
           @if (entries.length === 0 && !isRunning) {
             <div class="terminal-welcome">
-              <p>Run any operation on your project using Claude Code. The agent can read, write, and modify your codebase.</p>
+              <p>Run any operation on your company using Claude Code. The agent can read, write, and modify your codebase.</p>
               <div class="quick-actions">
                 <button class="quick-action" (click)="runQuick('Review the codebase and suggest improvements')"><mat-icon>rate_review</mat-icon> Code Review</button>
                 <button class="quick-action" (click)="runQuick('Generate a comprehensive README.md')"><mat-icon>description</mat-icon> Generate README</button>
