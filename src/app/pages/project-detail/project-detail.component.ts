@@ -104,6 +104,7 @@ import { EmployeeService } from '../../services/employee.service';
           <button class="tab" [class.active]="activeTab === 'agent'" (click)="activeTab = 'agent'"><mat-icon>terminal</mat-icon> Agent</button>
           <button class="tab" [class.active]="activeTab === 'skills'" (click)="activeTab = 'skills'"><mat-icon>auto_fix_high</mat-icon> Skills</button>
           <button class="tab" [class.active]="activeTab === 'employees'" (click)="loadEmployees(); activeTab = 'employees'"><mat-icon>groups</mat-icon> Team <span class="tab-badge" *ngIf="projectEmployees.length">{{ projectEmployees.length }}</span></button>
+          <button class="tab" [class.active]="activeTab === 'apps'" (click)="activeTab = 'apps'"><mat-icon>dns</mat-icon> Apps <span class="tab-badge" *ngIf="project.applications?.length">{{ project.applications.length }}</span></button>
           <button class="tab" [class.active]="activeTab === 'files'" (click)="activeTab = 'files'"><mat-icon>folder_open</mat-icon> Files</button>
           <button class="tab" [class.active]="activeTab === 'settings'" (click)="openSettings()"><mat-icon>settings</mat-icon> Settings</button>
         </div>
@@ -298,6 +299,99 @@ import { EmployeeService } from '../../services/employee.service';
                 }
               </div>
             }
+          </div>
+        } @else if (activeTab === 'apps') {
+          <div class="apps-tab">
+            <div class="apps-header">
+              <h3><mat-icon>dns</mat-icon> Applications & Services</h3>
+              <div class="apps-header-actions">
+                <button class="btn-gold-sm" (click)="showAddApp = !showAddApp">
+                  <mat-icon>{{ showAddApp ? 'close' : 'add' }}</mat-icon> {{ showAddApp ? 'Cancel' : 'Add App' }}
+                </button>
+              </div>
+            </div>
+
+            @if (showAddApp) {
+              <div class="add-app-form">
+                <div class="form-row">
+                  <input class="form-input" [(ngModel)]="newApp.name" placeholder="App name (e.g. landing-page)" />
+                  <input class="form-input port-input" [(ngModel)]="newApp.port" type="number" placeholder="Port" />
+                  <select class="form-input type-select" [(ngModel)]="newApp.type">
+                    <option value="frontend">Frontend</option>
+                    <option value="backend">Backend</option>
+                    <option value="fullstack">Full Stack</option>
+                    <option value="service">Service</option>
+                    <option value="database">Database</option>
+                  </select>
+                </div>
+                <div class="form-row">
+                  <input class="form-input" [(ngModel)]="newApp.dockerService" placeholder="Docker service name" />
+                  <input class="form-input" [(ngModel)]="newApp.description" placeholder="Description" />
+                  <button class="btn-gold-sm" (click)="addApplication()" [disabled]="!newApp.name || !newApp.port">
+                    <mat-icon>check</mat-icon> Save
+                  </button>
+                </div>
+              </div>
+            }
+
+            <div class="apps-grid">
+              @for (app of project.applications || []; track app.name) {
+                <div class="app-card" [class.running]="app.status === 'running'" [class.error]="app.status === 'error'">
+                  <div class="app-card-header">
+                    <div class="app-type-badge" [attr.data-type]="app.type">{{ app.type }}</div>
+                    <div class="app-status" [class]="'status-' + app.status">
+                      <span class="status-dot"></span> {{ app.status }}
+                    </div>
+                  </div>
+                  <div class="app-card-body">
+                    <h4 class="app-name">{{ app.name }}</h4>
+                    <p class="app-desc" *ngIf="app.description">{{ app.description }}</p>
+                    <div class="app-meta">
+                      <span class="app-port" matTooltip="Docker port"><mat-icon>lan</mat-icon> :{{ app.port }}</span>
+                      <span class="app-path" matTooltip="Gateway path"><mat-icon>link</mat-icon> {{ app.basePath }}</span>
+                    </div>
+                    @if (app.dockerService) {
+                      <div class="app-docker"><mat-icon>inventory_2</mat-icon> {{ app.dockerService }}</div>
+                    }
+                    @if (app.testInstructions) {
+                      <div class="app-test-instructions">
+                        <div class="test-instructions-header"><mat-icon>science</mat-icon> Test Instructions</div>
+                        <div class="test-instructions-body">{{ app.testInstructions }}</div>
+                      </div>
+                    } @else {
+                      <div class="app-test-instructions empty">
+                        <mat-icon>science</mat-icon> <span>No test instructions yet</span>
+                      </div>
+                    }
+                  </div>
+                  <div class="app-card-actions">
+                    <button class="app-action-btn" (click)="toggleAppStatus(app)" matTooltip="{{ app.status === 'running' ? 'Stop' : 'Start' }}">
+                      <mat-icon>{{ app.status === 'running' ? 'stop' : 'play_arrow' }}</mat-icon>
+                    </button>
+                    <button class="app-action-btn" (click)="openAppUrl(app)" matTooltip="Open in browser">
+                      <mat-icon>open_in_new</mat-icon>
+                    </button>
+                    <button class="app-action-btn danger" (click)="removeApplication(app.name)" matTooltip="Remove">
+                      <mat-icon>delete</mat-icon>
+                    </button>
+                  </div>
+                </div>
+              }
+              @if (!(project.applications || []).length) {
+                <div class="apps-empty">
+                  <mat-icon>dns</mat-icon>
+                  <p>No applications registered yet.</p>
+                  <p class="hint">Add an application to route traffic through the gateway.</p>
+                </div>
+              }
+            </div>
+
+            <!-- Gateway info -->
+            <div class="gateway-info">
+              <div class="gateway-label"><mat-icon>router</mat-icon> Gateway</div>
+              <span class="gateway-url">https://nonshattering-adelaida-ponchoed.ngrok-free.dev</span>
+              <span class="gateway-port">Port {{ gatewayPort }}</span>
+            </div>
           </div>
         } @else if (activeTab === 'files') {
           <app-file-explorer [project]="project" (projectUpdated)="project = $event"></app-file-explorer>
@@ -992,6 +1086,101 @@ import { EmployeeService } from '../../services/employee.service';
     .emp-logs-pager button:disabled { opacity: .3; }
     .emp-logs-pager span { font-size: .68rem; color: var(--color-text-subtle); }
 
+    /* Apps Tab */
+    .apps-tab { padding: 1rem 0; }
+    .apps-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+    .apps-header h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1rem; font-weight: 700; color: var(--color-text); }
+    .apps-header h3 mat-icon { font-size: 20px; width: 20px; height: 20px; color: var(--color-primary); }
+    .apps-header-actions { display: flex; gap: 8px; }
+    .btn-gold-sm {
+      display: flex; align-items: center; gap: 4px;
+      padding: 6px 14px; border: 1px solid var(--color-primary); border-radius: var(--radius-sm);
+      background: none; color: var(--color-primary); font-family: inherit; font-size: .78rem; font-weight: 600; cursor: pointer;
+    }
+    .btn-gold-sm:hover { background: rgba(212,175,55,.08); }
+    .btn-gold-sm:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-gold-sm mat-icon { font-size: 16px; width: 16px; height: 16px; }
+
+    .add-app-form {
+      padding: 14px; margin-bottom: 1rem; border: 1px solid var(--color-border-light);
+      border-radius: var(--radius-md); background: var(--color-bg-card);
+    }
+    .form-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .form-row:last-child { margin-bottom: 0; }
+    .form-input {
+      flex: 1; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: var(--color-bg); color: var(--color-text); font-family: inherit; font-size: .82rem; outline: none;
+    }
+    .form-input:focus { border-color: var(--color-primary); }
+    .form-input::placeholder { color: var(--color-text-subtle); }
+    .port-input { max-width: 90px; }
+    .type-select { max-width: 130px; }
+
+    .apps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+    .app-card {
+      border: 1px solid var(--color-border-light); border-radius: var(--radius-md);
+      background: var(--color-bg-card); overflow: hidden; transition: border-color .15s;
+    }
+    .app-card:hover { border-color: var(--color-primary); }
+    .app-card.running { border-left: 3px solid #22c55e; }
+    .app-card.error { border-left: 3px solid #f85149; }
+    .app-card-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--color-border-light); }
+    .app-type-badge {
+      font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+      padding: 2px 8px; border-radius: 100px; background: rgba(212,175,55,.1); color: var(--color-primary);
+    }
+    .app-type-badge[data-type="backend"] { background: rgba(96,165,250,.1); color: #60a5fa; }
+    .app-type-badge[data-type="service"] { background: rgba(167,139,250,.1); color: #a78bfa; }
+    .app-type-badge[data-type="database"] { background: rgba(251,146,60,.1); color: #fb923c; }
+    .app-status { display: flex; align-items: center; gap: 4px; font-size: .72rem; font-weight: 600; }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .status-running { color: #22c55e; }
+    .status-running .status-dot { background: #22c55e; }
+    .status-stopped { color: var(--color-text-subtle); }
+    .status-stopped .status-dot { background: var(--color-text-subtle); }
+    .status-building { color: #f59e0b; }
+    .status-building .status-dot { background: #f59e0b; }
+    .status-error { color: #f85149; }
+    .status-error .status-dot { background: #f85149; }
+    .app-card-body { padding: 14px; }
+    .app-name { margin: 0 0 4px 0; font-size: .9rem; font-weight: 700; color: var(--color-text); }
+    .app-desc { margin: 0 0 8px 0; font-size: .78rem; color: var(--color-text-subtle); }
+    .app-meta { display: flex; gap: 12px; margin-bottom: 6px; }
+    .app-port, .app-path { display: flex; align-items: center; gap: 3px; font-size: .72rem; color: var(--color-text-subtle); font-family: 'Fira Code', monospace; }
+    .app-port mat-icon, .app-path mat-icon { font-size: 14px; width: 14px; height: 14px; }
+    .app-docker { display: flex; align-items: center; gap: 4px; font-size: .72rem; color: var(--color-text-subtle); margin-top: 4px; }
+    .app-docker mat-icon { font-size: 14px; width: 14px; height: 14px; color: #60a5fa; }
+    .app-test-instructions { margin-top: 8px; padding: 8px; border-radius: var(--radius-sm); background: rgba(34,197,94,.06); border: 1px solid rgba(34,197,94,.15); }
+    .app-test-instructions.empty { background: rgba(255,255,255,.03); border-color: var(--color-border-light); display: flex; align-items: center; gap: 4px; font-size: .72rem; color: var(--color-text-subtle); }
+    .app-test-instructions.empty mat-icon { font-size: 14px; width: 14px; height: 14px; }
+    .test-instructions-header { display: flex; align-items: center; gap: 4px; font-size: .72rem; font-weight: 600; color: #22c55e; margin-bottom: 4px; }
+    .test-instructions-header mat-icon { font-size: 14px; width: 14px; height: 14px; }
+    .test-instructions-body { font-size: .75rem; color: var(--color-text-secondary); white-space: pre-wrap; line-height: 1.4; }
+    .app-card-actions { display: flex; gap: 4px; padding: 8px 14px; border-top: 1px solid var(--color-border-light); }
+    .app-action-btn {
+      width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: none; color: var(--color-text-subtle); cursor: pointer;
+    }
+    .app-action-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    .app-action-btn.danger:hover { border-color: #f85149; color: #f85149; }
+    .app-action-btn mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .apps-empty {
+      grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center;
+      padding: 3rem; text-align: center; color: var(--color-text-subtle);
+    }
+    .apps-empty mat-icon { font-size: 40px; width: 40px; height: 40px; opacity: .3; margin-bottom: .5rem; }
+    .apps-empty p { margin: .2rem 0; font-size: .88rem; }
+    .apps-empty .hint { font-size: .78rem; opacity: .7; }
+    .gateway-info {
+      display: flex; align-items: center; gap: 12px; margin-top: 1rem; padding: 10px 16px;
+      border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); background: var(--color-bg-card);
+    }
+    .gateway-label { display: flex; align-items: center; gap: 6px; font-size: .82rem; font-weight: 700; color: var(--color-primary); }
+    .gateway-label mat-icon { font-size: 18px; width: 18px; height: 18px; }
+    .gateway-url { font-size: .78rem; font-family: 'Fira Code', monospace; color: var(--color-text); }
+    .gateway-port { font-size: .72rem; color: var(--color-text-subtle); margin-left: auto; }
+
     .settings-tab { padding: 1rem 0; }
     .settings-header {
       display: flex; align-items: center; justify-content: space-between;
@@ -1057,8 +1246,14 @@ export class ProjectDetailComponent implements OnInit {
   project: Project | null = null;
   loading = true;
   isEditing = false;
-  activeTab: 'overview' | 'marketing' | 'agent' | 'skills' | 'employees' | 'files' | 'settings' = 'overview';
+  activeTab: 'overview' | 'marketing' | 'agent' | 'skills' | 'employees' | 'apps' | 'files' | 'settings' = 'overview';
   projectEmployees: any[] = [];
+
+  // Apps tab
+  showAddApp = false;
+  newApp = { name: '', port: 3001, type: 'fullstack' as string, dockerService: '', description: '' };
+  gatewayPort = 9080;
+
   empLogsOpen = '';
   empLogsFilter = '';
   empLogsLoading = false;
@@ -1179,6 +1374,46 @@ export class ProjectDetailComponent implements OnInit {
       next: (emps) => { this.projectEmployees = emps; },
       error: () => { this.projectEmployees = []; },
     });
+  }
+
+  // Applications
+  addApplication(): void {
+    if (!this.project?._id || !this.newApp.name || !this.newApp.port) return;
+    this.projectService.addApplication(this.project._id, this.newApp).subscribe({
+      next: (app) => {
+        if (!this.project!.applications) this.project!.applications = [];
+        this.project!.applications.push(app);
+        this.newApp = { name: '', port: 3001, type: 'fullstack', dockerService: '', description: '' };
+        this.showAddApp = false;
+        this.snackBar.open('Application added', 'Close', { duration: 2000 });
+      },
+      error: (err) => this.snackBar.open(err.error?.error || 'Failed to add app', 'Close', { duration: 3000 }),
+    });
+  }
+
+  removeApplication(appName: string): void {
+    if (!this.project?._id || !confirm(`Remove ${appName}?`)) return;
+    this.projectService.removeApplication(this.project._id, appName).subscribe({
+      next: () => {
+        this.project!.applications = this.project!.applications.filter(a => a.name !== appName);
+        this.snackBar.open('Application removed', 'Close', { duration: 2000 });
+      },
+      error: () => this.snackBar.open('Failed to remove app', 'Close', { duration: 3000 }),
+    });
+  }
+
+  toggleAppStatus(app: any): void {
+    if (!this.project?._id) return;
+    const newStatus = app.status === 'running' ? 'stopped' : 'running';
+    this.projectService.updateApplication(this.project._id, app.name, { status: newStatus }).subscribe({
+      next: () => { app.status = newStatus; },
+      error: () => this.snackBar.open('Failed to update status', 'Close', { duration: 3000 }),
+    });
+  }
+
+  openAppUrl(app: any): void {
+    const url = `https://nonshattering-adelaida-ponchoed.ngrok-free.dev${app.basePath}/`;
+    window.open(url, '_blank');
   }
 
   countTasks(emp: any, status: string): number {

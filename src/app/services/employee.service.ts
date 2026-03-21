@@ -115,10 +115,50 @@ export class EmployeeService {
     return this.http.get<EmployeeSkill[]>(`${this.apiUrl}/role-skills/${role}`);
   }
 
+  setRoleSkills(role: string, skills: EmployeeSkill[]): Observable<{ updated: number }> {
+    return this.http.put<{ updated: number }>(`${this.apiUrl}/role-skills/${role}`, { skills });
+  }
+
+  getLocalSkills(): Observable<{ name: string; description: string }[]> {
+    return this.http.get<{ name: string; description: string }[]>(`${this.apiUrl}/local-skills`);
+  }
+
   getLogs(employeeId: string, page = 1, limit = 100, category?: string): Observable<EmployeeLogsResponse> {
     let url = `${this.apiUrl}/${employeeId}/logs?page=${page}&limit=${limit}`;
     if (category) url += `&category=${category}`;
     return this.http.get<EmployeeLogsResponse>(url);
+  }
+
+  // Memory
+  getMemories(employeeId: string, category?: string): Observable<EmployeeMemoryEntry[]> {
+    let url = `${this.apiUrl}/${employeeId}/memories`;
+    if (category) url += `?category=${category}`;
+    return this.http.get<EmployeeMemoryEntry[]>(url);
+  }
+
+  addMemory(employeeId: string, data: { category: string; content: string; importance?: number; tags?: string[] }): Observable<EmployeeMemoryEntry> {
+    return this.http.post<EmployeeMemoryEntry>(`${this.apiUrl}/${employeeId}/memories`, data);
+  }
+
+  deleteMemory(employeeId: string, memoryId: string): Observable<any> {
+    return this.http.delete(`${this.apiUrl}/${employeeId}/memories/${memoryId}`);
+  }
+
+  wipeMemories(employeeId: string): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(`${this.apiUrl}/${employeeId}/memories`);
+  }
+
+  compactLogs(employeeId: string): Observable<{ created: number; summary: string }> {
+    return this.http.post<{ created: number; summary: string }>(`${this.apiUrl}/${employeeId}/compact`, {});
+  }
+
+  // Control
+  restartEmployee(employeeId: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.apiUrl}/${employeeId}/restart`, {});
+  }
+
+  getWorkingStatus(employeeId: string): Observable<{ workingStatus: string; workingStatusAt: string }> {
+    return this.http.get<{ workingStatus: string; workingStatusAt: string }>(`${this.apiUrl}/${employeeId}`);
   }
 }
 
@@ -140,4 +180,15 @@ export interface EmployeeLogsResponse {
   page: number;
   limit: number;
   pages: number;
+}
+
+export interface EmployeeMemoryEntry {
+  _id: string;
+  category: 'goal' | 'learning' | 'blocker' | 'decision' | 'preference' | 'context';
+  content: string;
+  source: string;
+  importance: number;
+  tags: string[];
+  accessCount: number;
+  createdAt: string;
 }

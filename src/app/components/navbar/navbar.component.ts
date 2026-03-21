@@ -49,6 +49,10 @@ import { User } from '../../models/user.model';
               <mat-icon>groups</mat-icon>
               <span>HR</span>
             </a>
+            <a class="nav-link" routerLink="/applications" routerLinkActive="active">
+              <mat-icon>dns</mat-icon>
+              <span>Apps</span>
+            </a>
             <a class="nav-link" routerLink="/telemetry" routerLinkActive="active">
               <mat-icon>monitoring</mat-icon>
               <span>Telemetry</span>

@@ -10,6 +10,7 @@ import { HttpClient } from '@angular/common/http';
 import { Subscription } from 'rxjs';
 import { EmployeeService } from '../../services/employee.service';
 import { ProjectService } from '../../services/project.service';
+import { WebSocketService, WSEmployeeStatus, WSTaskUpdate, WSEmployeeLog } from '../../services/websocket.service';
 import { Employee, EmployeeSkill, RoleTemplate, CommFile } from '../../models/employee.model';
 import { Project } from '../../models/project.model';
 import { environment } from '../../../environments/environment';
@@ -43,6 +44,9 @@ import { marked } from 'marked';
           <button class="hr-tab" [class.active]="activeTab === 'comms'" (click)="loadComms(); activeTab = 'comms'">
             <mat-icon>forum</mat-icon> Comms
           </button>
+          <button class="hr-tab" [class.active]="activeTab === 'skills'" (click)="loadSkillsConfig(); activeTab = 'skills'">
+            <mat-icon>auto_fix_high</mat-icon> Skills
+          </button>
           <button class="hr-tab" [class.active]="activeTab === 'manager'" (click)="loadManagerLog(); activeTab = 'manager'">
             <mat-icon>admin_panel_settings</mat-icon> Manager
             @if (managerRunning) { <span class="manager-live-dot"></span> }
@@ -65,6 +69,66 @@ import { marked } from 'marked';
                     <span class="project-col-name">{{ pg.project.name }}</span>
                     <span class="project-col-count">{{ pg.employees.length }}</span>
                   </div>
+
+                  <!-- Development Cycle -->
+                  <div class="cycle-bar">
+                    <button class="cycle-arrow" (click)="scrollCycle($event, -1)" matTooltip="Scroll left">
+                      <mat-icon>chevron_left</mat-icon>
+                    </button>
+                    <div class="cycle-phases">
+                      @for (phase of cyclePhases; track phase) {
+                        <div class="cycle-phase"
+                             [class.active]="pg.project.strategicCycle?.status === phase"
+                             [class.done]="isCyclePhaseDone(pg.project, phase)"
+                             (click)="setCycleStatus(pg.project, phase)">
+                          <span class="cycle-icon">{{ cyclePhaseIcon(phase) }}</span>
+                          <span class="cycle-label">{{ phase }}</span>
+                        </div>
+                      }
+                    </div>
+                    <button class="cycle-arrow" (click)="scrollCycle($event, 1)" matTooltip="Scroll right">
+                      <mat-icon>chevron_right</mat-icon>
+                    </button>
+                    @if (pg.project.strategicCycle?.status === 'dev' || pg.project.strategicCycle?.status === 'qa') {
+                      <div class="cycle-progress">
+                        @if (pg.project.strategicCycle.status === 'dev') {
+                          <span class="cycle-count">Dev: {{ pg.project.strategicCycle.devTasksDone }}/{{ pg.project.strategicCycle.devTasksTotal }}</span>
+                        } @else {
+                          <span class="cycle-count">QA: {{ pg.project.strategicCycle.qaTasksDone }}/{{ pg.project.strategicCycle.qaTasksTotal }}</span>
+                        }
+                      </div>
+                    }
+                    @if (pg.project.strategicCycle?.advice) {
+                      <button class="cycle-advice-btn" (click)="toggleCycleAdvice(pg.project._id!)" matTooltip="View strategic advice">
+                        <mat-icon>lightbulb</mat-icon>
+                      </button>
+                    }
+                  </div>
+                  @if (expandedCycleAdvice === pg.project._id) {
+                    <div class="cycle-advice-panel">
+                      <div class="cycle-advice-header">
+                        <span>Strategic Direction</span>
+                        <div class="cycle-advice-actions">
+                          @if (!editingDirection) {
+                            <button (click)="startEditDirection(pg.project)" matTooltip="Edit"><mat-icon>edit</mat-icon></button>
+                          }
+                          <button (click)="expandedCycleAdvice = ''; editingDirection = false"><mat-icon>close</mat-icon></button>
+                        </div>
+                      </div>
+                      @if (editingDirection) {
+                        <div class="direction-edit">
+                          <textarea [(ngModel)]="directionEditText" rows="6" class="direction-textarea"></textarea>
+                          <div class="direction-edit-actions">
+                            <button class="dir-save" (click)="saveDirection(pg.project)"><mat-icon>check</mat-icon> Save</button>
+                            <button class="dir-cancel" (click)="editingDirection = false"><mat-icon>close</mat-icon> Cancel</button>
+                          </div>
+                        </div>
+                      } @else {
+                        <div class="cycle-advice-body">{{ pg.project.strategicDirection || pg.project.strategicCycle?.advice || 'No strategic direction set yet.' }}</div>
+                      }
+                    </div>
+                  }
+
                   <div class="project-col-body">
                     @for (emp of pg.employees; track emp._id) {
                       <div class="mini-card" [class.working]="emp.status === 'working'"
@@ -74,6 +138,11 @@ import { marked } from 'marked';
                         <div class="mini-info">
                           <span class="mini-name">{{ emp.name }}</span>
                           <span class="mini-title">{{ emp.title }}</span>
+                          @if (getLatestTask(emp); as lt) {
+                            <span class="mini-task" [class]="lt.status">
+                              {{ taskStatusIcon(lt.status) }} {{ lt.description | slice:0:40 }}{{ lt.description.length > 40 ? '...' : '' }}
+                            </span>
+                          }
                         </div>
                         <span class="mini-status" [class]="emp.status">
                           @if (emp.status === 'working') {
@@ -82,6 +151,9 @@ import { marked } from 'marked';
                             <span class="mini-dot"></span>
                           }
                         </span>
+                        <button class="mini-expand" (click)="openEmployeeModal(emp, pg.project._id!); $event.stopPropagation()" matTooltip="Expand">
+                          <mat-icon>open_in_full</mat-icon>
+                        </button>
                       </div>
                     }
                     @if (pg.employees.length === 0) {
@@ -107,13 +179,130 @@ import { marked } from 'marked';
                     <span class="detail-title">{{ selectedEmployee.title }}</span>
                     <span class="detail-status" [class]="selectedEmployee.status">{{ selectedEmployee.status }}</span>
                   </div>
-                  <button class="logs-btn" (click)="openLogs(selectedEmployee)" matTooltip="View Logs">
-                    <mat-icon>receipt_long</mat-icon>
-                  </button>
-                  <button class="fire-btn" (click)="fireEmployee(selectedEmployee)" matTooltip="Remove">
-                    <mat-icon>person_remove</mat-icon>
-                  </button>
+                  <div class="control-btns">
+                    @if (selectedEmployee.status === 'working') {
+                      <button class="ctrl-btn stop" (click)="stopEmployee()" matTooltip="Stop">
+                        <mat-icon>stop</mat-icon>
+                      </button>
+                      <button class="ctrl-btn restart" (click)="restartEmployee()" matTooltip="Restart">
+                        <mat-icon>restart_alt</mat-icon>
+                      </button>
+                    } @else {
+                      <button class="ctrl-btn start" (click)="restartEmployee()" matTooltip="Wake up"
+                              [disabled]="!selectedEmployee.taskHistory?.length">
+                        <mat-icon>play_arrow</mat-icon>
+                      </button>
+                    }
+                    <button class="ctrl-btn" [class.active]="detailTab === 'memory'" (click)="detailTab = detailTab === 'memory' ? 'task' : 'memory'; detailTab === 'memory' && loadMemories(selectedEmployee)" matTooltip="Memory">
+                      <mat-icon>psychology</mat-icon>
+                    </button>
+                    <button class="ctrl-btn" [class.active]="detailTab === 'chat'" (click)="detailTab = detailTab === 'chat' ? 'task' : 'chat'" matTooltip="Chat">
+                      <mat-icon>chat</mat-icon>
+                    </button>
+                    <button class="ctrl-btn" (click)="openLogs(selectedEmployee)" matTooltip="Logs">
+                      <mat-icon>receipt_long</mat-icon>
+                    </button>
+                    <button class="fire-btn" (click)="fireEmployee(selectedEmployee)" matTooltip="Remove">
+                      <mat-icon>person_remove</mat-icon>
+                    </button>
+                  </div>
                 </div>
+
+                <!-- Chat panel (like Alfred) -->
+                @if (detailTab === 'chat') {
+                  <div class="emp-chat-panel">
+                    <div class="emp-chat-body">
+                      @if (chatMessages.length === 0) {
+                        <div class="emp-chat-empty">
+                          <mat-icon>chat_bubble_outline</mat-icon>
+                          <p>Send a message to {{ selectedEmployee.name }} while they're working.</p>
+                          <p class="hint">Messages are delivered mid-execution so the agent can adapt.</p>
+                        </div>
+                      }
+                      @for (msg of chatMessages; track $index) {
+                        <div class="emp-msg" [class.user]="msg.role === 'user'" [class.agent]="msg.role === 'agent'">
+                          <span class="emp-msg-sender">{{ msg.role === 'user' ? 'You' : selectedEmployee.name }}</span>
+                          <span class="emp-msg-text">{{ msg.text }}</span>
+                        </div>
+                      }
+                    </div>
+                    <div class="emp-chat-input">
+                      <input [(ngModel)]="chatInput" placeholder="Message {{ selectedEmployee.name }}..."
+                             (keydown.enter)="sendChatMessage(selectedEmployee)" />
+                      <button (click)="sendChatMessage(selectedEmployee)" [disabled]="!chatInput.trim() || chatSending">
+                        <mat-icon>send</mat-icon>
+                      </button>
+                    </div>
+                  </div>
+                }
+
+                <!-- Memory panel -->
+                @if (detailTab === 'memory') {
+                  <div class="memory-panel">
+                    <div class="memory-header">
+                      <h3><mat-icon>psychology</mat-icon> Memory ({{ employeeMemories.length }})</h3>
+                      <div class="memory-actions">
+                        <button class="mem-btn" (click)="compactLogs(selectedEmployee)" matTooltip="Compact recent logs into memory" [disabled]="compacting">
+                          <mat-icon>compress</mat-icon> {{ compacting ? 'Compacting...' : 'Compact' }}
+                        </button>
+                        <button class="mem-btn danger" (click)="wipeMemories(selectedEmployee)" matTooltip="Clear all memories">
+                          <mat-icon>delete_sweep</mat-icon> Wipe
+                        </button>
+                      </div>
+                    </div>
+                    <div class="memory-filters">
+                      <button class="filter-chip" [class.active]="memoryFilter === ''" (click)="memoryFilter = ''; loadMemories(selectedEmployee)">All</button>
+                      <button class="filter-chip" [class.active]="memoryFilter === 'learning'" (click)="memoryFilter = 'learning'; loadMemories(selectedEmployee)">Learnings</button>
+                      <button class="filter-chip" [class.active]="memoryFilter === 'goal'" (click)="memoryFilter = 'goal'; loadMemories(selectedEmployee)">Goals</button>
+                      <button class="filter-chip" [class.active]="memoryFilter === 'blocker'" (click)="memoryFilter = 'blocker'; loadMemories(selectedEmployee)">Blockers</button>
+                      <button class="filter-chip" [class.active]="memoryFilter === 'decision'" (click)="memoryFilter = 'decision'; loadMemories(selectedEmployee)">Decisions</button>
+                      <button class="filter-chip" [class.active]="memoryFilter === 'context'" (click)="memoryFilter = 'context'; loadMemories(selectedEmployee)">Context</button>
+                    </div>
+                    <div class="memory-list">
+                      @if (memoriesLoading) {
+                        <div class="logs-loading"><mat-spinner diameter="20"></mat-spinner> Loading...</div>
+                      } @else if (employeeMemories.length === 0) {
+                        <div class="logs-empty">No memories yet. Assign tasks and memories will be auto-extracted from logs.</div>
+                      } @else {
+                        @for (mem of employeeMemories; track mem._id) {
+                          <div class="mem-card" [class]="mem.category">
+                            <div class="mem-top">
+                              <span class="mem-cat-badge">{{ memoryCategoryIcon(mem.category) }} {{ mem.category }}</span>
+                              <span class="mem-importance" matTooltip="Importance">{{ mem.importance }}/10</span>
+                              <button class="mem-delete" (click)="deleteMemory(selectedEmployee, mem._id)" matTooltip="Delete">
+                                <mat-icon>close</mat-icon>
+                              </button>
+                            </div>
+                            <p class="mem-content">{{ mem.content }}</p>
+                            @if (mem.tags.length) {
+                              <div class="mem-tags">
+                                @for (tag of mem.tags; track tag) {
+                                  <span class="mem-tag">{{ tag }}</span>
+                                }
+                              </div>
+                            }
+                            <span class="mem-source">{{ mem.source }} · {{ mem.createdAt | date:'MM/dd HH:mm' }} · accessed {{ mem.accessCount }}x</span>
+                          </div>
+                        }
+                      }
+                    </div>
+                    <!-- Add memory manually -->
+                    <div class="mem-add">
+                      <select [(ngModel)]="newMemCategory" class="mem-add-cat">
+                        <option value="learning">Learning</option>
+                        <option value="goal">Goal</option>
+                        <option value="blocker">Blocker</option>
+                        <option value="decision">Decision</option>
+                        <option value="preference">Preference</option>
+                        <option value="context">Context</option>
+                      </select>
+                      <input [(ngModel)]="newMemContent" placeholder="Add a memory..." class="mem-add-input" (keydown.enter)="addManualMemory(selectedEmployee)" />
+                      <button (click)="addManualMemory(selectedEmployee)" [disabled]="!newMemContent.trim()" class="mem-add-btn">
+                        <mat-icon>add</mat-icon>
+                      </button>
+                    </div>
+                  </div>
+                }
 
                 <!-- Logs panel -->
                 @if (showLogsFor === selectedEmployee._id) {
@@ -344,7 +533,7 @@ import { marked } from 'marked';
                             <button class="ctrl-btn stop" (click)="stopEmployee()" matTooltip="Stop current task">
                               <mat-icon>stop</mat-icon>
                             </button>
-                            <button class="ctrl-btn restart" (click)="restartEmployee()" matTooltip="Stop and re-run last task">
+                            <button class="ctrl-btn restart" (click)="restartEmployee()" matTooltip="Restart with self-evaluation">
                               <mat-icon>restart_alt</mat-icon>
                             </button>
                           }
@@ -678,6 +867,84 @@ import { marked } from 'marked';
           </div>
         }
 
+        <!-- Skills Configuration tab -->
+        @if (activeTab === 'skills') {
+          <div class="skills-config">
+            <h3 class="skills-title"><mat-icon>auto_fix_high</mat-icon> Skills Configuration</h3>
+            <p class="skills-subtitle">Assign Claude Code skills to employee roles. All employees of a role share the same skill set.</p>
+
+            @if (skillsLoading) {
+              <div class="loading"><mat-spinner diameter="28"></mat-spinner></div>
+            } @else {
+              <!-- Role selector -->
+              <div class="skills-role-bar">
+                @for (role of roles; track role.role) {
+                  <button class="skills-role-btn" [class.active]="skillsSelectedRole === role.role"
+                          (click)="selectSkillsRole(role.role)">
+                    <span class="skills-role-avatar">{{ role.avatar }}</span>
+                    <span class="skills-role-name">{{ role.title }}</span>
+                    <span class="skills-role-count">{{ getRoleSkillCount(role.role) }}</span>
+                  </button>
+                }
+              </div>
+
+              @if (skillsSelectedRole) {
+                <div class="skills-panels">
+                  <!-- Assigned skills -->
+                  <div class="skills-panel">
+                    <div class="skills-panel-header">
+                      <h4>Assigned Skills ({{ assignedSkills.length }})</h4>
+                      @if (skillsDirty) {
+                        <button class="skills-save-btn" (click)="saveRoleSkills()">
+                          <mat-icon>check</mat-icon> Save
+                        </button>
+                      }
+                    </div>
+                    <div class="skills-list">
+                      @for (skill of assignedSkills; track skill.name) {
+                        <div class="skill-chip assigned">
+                          <span class="skill-chip-name">/{{ skill.name }}</span>
+                          <button class="skill-chip-remove" (click)="unassignSkill(skill.name)" matTooltip="Remove">
+                            <mat-icon>close</mat-icon>
+                          </button>
+                        </div>
+                      }
+                      @if (!assignedSkills.length) {
+                        <div class="skills-empty">No skills assigned to this role yet</div>
+                      }
+                    </div>
+                  </div>
+
+                  <!-- Available skills -->
+                  <div class="skills-panel">
+                    <div class="skills-panel-header">
+                      <h4>Available Skills ({{ availableSkills.length }})</h4>
+                      <input class="skills-search" [(ngModel)]="skillsSearch" placeholder="Search skills..." />
+                    </div>
+                    <div class="skills-list">
+                      @for (skill of filteredAvailableSkills; track skill.name) {
+                        <div class="skill-chip available" (click)="assignSkill(skill)">
+                          <span class="skill-chip-name">/{{ skill.name }}</span>
+                          <span class="skill-chip-desc">{{ skill.description }}</span>
+                          <mat-icon class="skill-chip-add">add_circle</mat-icon>
+                        </div>
+                      }
+                      @if (!filteredAvailableSkills.length) {
+                        <div class="skills-empty">{{ skillsSearch ? 'No matching skills' : 'All skills assigned' }}</div>
+                      }
+                    </div>
+                  </div>
+                </div>
+              } @else {
+                <div class="skills-empty-state">
+                  <mat-icon>touch_app</mat-icon>
+                  <p>Select a role above to configure its skills</p>
+                </div>
+              }
+            }
+          </div>
+        }
+
         @if (!selectedProjectId && (activeTab === 'team' || activeTab === 'hire' || activeTab === 'comms')) {
           <div class="empty-state">
             <mat-icon>business</mat-icon>
@@ -685,6 +952,205 @@ import { marked } from 'marked';
             <p>Choose a company above to manage its AI employees.</p>
           </div>
         }
+      }
+
+      <!-- Employee Modal -->
+      @if (modalEmployee) {
+        <div class="emp-modal-overlay" (click)="closeModal()">
+          <div class="emp-modal" (click)="$event.stopPropagation()">
+            <div class="emp-modal-header">
+              <span class="emp-modal-avatar">{{ modalEmployee.avatar }}</span>
+              <div class="emp-modal-info">
+                <h2>{{ modalEmployee.name }}</h2>
+                <span class="emp-modal-title">{{ modalEmployee.title }}</span>
+                <span class="emp-modal-status" [class]="modalEmployee.status">{{ modalEmployee.status }}</span>
+              </div>
+              <div class="emp-modal-controls">
+                @if (modalEmployee.status === 'working') {
+                  <button class="ctrl-btn stop" (click)="stopEmployee()" matTooltip="Stop"><mat-icon>stop</mat-icon></button>
+                  <button class="ctrl-btn restart" (click)="restartEmployee()" matTooltip="Restart"><mat-icon>restart_alt</mat-icon></button>
+                } @else {
+                  <button class="ctrl-btn start" (click)="restartEmployee()" matTooltip="Resume" [disabled]="!modalEmployee.taskHistory?.length"><mat-icon>play_arrow</mat-icon></button>
+                }
+                <button class="ctrl-btn" (click)="closeModal()" matTooltip="Close"><mat-icon>close</mat-icon></button>
+              </div>
+            </div>
+
+            <!-- Modal tabs -->
+            <div class="emp-modal-tabs">
+              <button [class.active]="modalTab === 'tasks'" (click)="modalTab = 'tasks'"><mat-icon>assignment</mat-icon> Tasks</button>
+              <button [class.active]="modalTab === 'logs'" (click)="modalTab = 'logs'; loadModalLogs()"><mat-icon>receipt_long</mat-icon> Logs</button>
+              <button [class.active]="modalTab === 'memory'" (click)="modalTab = 'memory'; loadModalMemories()"><mat-icon>psychology</mat-icon> Memory</button>
+              <button [class.active]="modalTab === 'chat'" (click)="modalTab = 'chat'"><mat-icon>chat</mat-icon> Chat</button>
+              <button [class.active]="modalTab === 'skills'" (click)="modalTab = 'skills'"><mat-icon>auto_fix_high</mat-icon> Skills</button>
+            </div>
+
+            <div class="emp-modal-body">
+              <!-- Working Status -->
+              <div class="emp-working-status" [class.empty]="!modalEmployee.workingStatus">
+                <div class="ws-header">
+                  <mat-icon class="ws-icon">info_outline</mat-icon>
+                  <span class="ws-label">Working Status</span>
+                  @if (modalEmployee.workingStatusAt) {
+                    <span class="ws-time">{{ modalEmployee.workingStatusAt | date:'MM/dd HH:mm' }}</span>
+                  }
+                </div>
+                @if (modalEmployee.workingStatus) {
+                  @if (modalEmployee.workingStatus.length > 2000 && !wsExpanded) {
+                    <div class="ws-text" [innerHTML]="parseMarkdown(modalEmployee.workingStatus.substring(0, 2000) + '\n\n...')"></div>
+                    <button class="ws-expand" (click)="wsExpanded = true">Show more ({{ modalEmployee.workingStatus.length }} chars)</button>
+                  } @else {
+                    <div class="ws-text" [innerHTML]="parseMarkdown(modalEmployee.workingStatus)"></div>
+                    @if (modalEmployee.workingStatus.length > 2000) {
+                      <button class="ws-expand" (click)="wsExpanded = false">Show less</button>
+                    }
+                  }
+                } @else {
+                  <div class="ws-text empty-text">No status updates yet</div>
+                }
+              </div>
+              <!-- Tasks tab -->
+              @if (modalTab === 'tasks') {
+                <div class="modal-section">
+                  <div class="modal-task-input">
+                    <textarea [(ngModel)]="modalTaskInput" placeholder="Assign a task..." rows="2" class="modal-textarea"></textarea>
+                    <button class="modal-task-btn" (click)="assignModalTask()" [disabled]="!modalTaskInput.trim()">
+                      <mat-icon>send</mat-icon>
+                    </button>
+                  </div>
+                  <div class="modal-task-list">
+                    @for (task of modalEmployee.taskHistory.slice().reverse(); track task.taskId) {
+                      <div class="modal-task-item" [class]="task.status" [class.unread]="!task.resultRead && task.result">
+                        <div class="modal-task-top">
+                          <span class="modal-task-icon">{{ taskStatusIcon(task.status) }}</span>
+                          @if (!task.resultRead && task.result) {
+                            <span class="unread-dot" matTooltip="Unread by Alfred">🔴</span>
+                          }
+                          <span class="modal-task-desc">{{ task.description }}</span>
+                          <span class="modal-task-time">{{ task.startedAt | date:'MM/dd HH:mm' }}</span>
+                        </div>
+                        <div class="modal-task-output">
+                          @if (task.result) {
+                            <pre class="modal-task-pre">{{ task.result }}</pre>
+                          } @else {
+                            <span class="modal-task-no-output">No output yet</span>
+                          }
+                        </div>
+                      </div>
+                    }
+                    @if (!modalEmployee.taskHistory?.length) {
+                      <div class="modal-empty">No tasks assigned yet</div>
+                    }
+                  </div>
+                </div>
+              }
+
+              <!-- Logs tab -->
+              @if (modalTab === 'logs') {
+                <div class="modal-section">
+                  <div class="modal-log-filters">
+                    <button class="filter-chip" [class.active]="modalLogFilter === ''" (click)="modalLogFilter = ''; loadModalLogs()">All</button>
+                    <button class="filter-chip" [class.active]="modalLogFilter === 'task_start'" (click)="modalLogFilter = 'task_start'; loadModalLogs()">Start</button>
+                    <button class="filter-chip" [class.active]="modalLogFilter === 'task_complete'" (click)="modalLogFilter = 'task_complete'; loadModalLogs()">Done</button>
+                    <button class="filter-chip" [class.active]="modalLogFilter === 'task_fail'" (click)="modalLogFilter = 'task_fail'; loadModalLogs()">Failed</button>
+                    <button class="filter-chip" [class.active]="modalLogFilter === 'tool_use'" (click)="modalLogFilter = 'tool_use'; loadModalLogs()">Tools</button>
+                    <button class="filter-chip" [class.active]="modalLogFilter === 'text'" (click)="modalLogFilter = 'text'; loadModalLogs()">Text</button>
+                    <button class="filter-chip" [class.active]="modalLogFilter === 'error'" (click)="modalLogFilter = 'error'; loadModalLogs()">Errors</button>
+                  </div>
+                  <div class="modal-log-list">
+                    @if (modalLogsLoading) {
+                      <div class="modal-loading"><mat-spinner diameter="20"></mat-spinner></div>
+                    } @else {
+                      @for (log of modalLogs; track log._id) {
+                        <div class="modal-log-row" [class]="log.category">
+                          <span class="log-time">{{ log.createdAt | date:'MM/dd HH:mm:ss' }}</span>
+                          <span class="log-cat">{{ logIcon(log.category) }} {{ log.category }}</span>
+                          <span class="log-content">{{ log.content }}</span>
+                        </div>
+                      }
+                      @if (!modalLogs.length) { <div class="modal-empty">No logs</div> }
+                    }
+                  </div>
+                  @if (modalLogPages > 1) {
+                    <div class="modal-pagination">
+                      <button [disabled]="modalLogPage <= 1" (click)="modalLogPage = modalLogPage - 1; loadModalLogs()">Prev</button>
+                      <span>{{ modalLogPage }}/{{ modalLogPages }}</span>
+                      <button [disabled]="modalLogPage >= modalLogPages" (click)="modalLogPage = modalLogPage + 1; loadModalLogs()">Next</button>
+                    </div>
+                  }
+                </div>
+              }
+
+              <!-- Memory tab -->
+              @if (modalTab === 'memory') {
+                <div class="modal-section">
+                  <div class="modal-mem-actions">
+                    <button class="mem-btn" (click)="compactModalLogs()" [disabled]="modalCompacting"><mat-icon>compress</mat-icon> {{ modalCompacting ? 'Compacting...' : 'Compact Logs' }}</button>
+                    <button class="mem-btn danger" (click)="wipeModalMemories()"><mat-icon>delete_sweep</mat-icon> Wipe</button>
+                  </div>
+                  <div class="modal-mem-list">
+                    @if (modalMemLoading) {
+                      <div class="modal-loading"><mat-spinner diameter="20"></mat-spinner></div>
+                    } @else {
+                      @for (mem of modalMemories; track mem._id) {
+                        <div class="mem-card" [class]="mem.category">
+                          <div class="mem-top">
+                            <span class="mem-cat-badge">{{ memoryCategoryIcon(mem.category) }} {{ mem.category }}</span>
+                            <span class="mem-importance">{{ mem.importance }}/10</span>
+                            <button class="mem-delete" (click)="deleteModalMemory(mem._id)"><mat-icon>close</mat-icon></button>
+                          </div>
+                          <p class="mem-content">{{ mem.content }}</p>
+                          @if (mem.tags?.length) {
+                            <div class="mem-tags">@for (tag of mem.tags; track tag) { <span class="mem-tag">{{ tag }}</span> }</div>
+                          }
+                        </div>
+                      }
+                      @if (!modalMemories.length) { <div class="modal-empty">No memories yet</div> }
+                    }
+                  </div>
+                </div>
+              }
+
+              <!-- Chat tab -->
+              @if (modalTab === 'chat') {
+                <div class="modal-section modal-chat">
+                  <div class="modal-chat-body">
+                    @for (msg of modalChatMessages; track $index) {
+                      <div class="emp-msg" [class.user]="msg.role === 'user'" [class.agent]="msg.role === 'agent'">
+                        <span class="emp-msg-sender">{{ msg.role === 'user' ? 'You' : modalEmployee.name }}</span>
+                        <span class="emp-msg-text">{{ msg.text }}</span>
+                      </div>
+                    }
+                    @if (!modalChatMessages.length) {
+                      <div class="modal-empty">Send a message to {{ modalEmployee.name }}</div>
+                    }
+                  </div>
+                  <div class="emp-chat-input">
+                    <input [(ngModel)]="modalChatInput" placeholder="Message {{ modalEmployee.name }}..."
+                           (keydown.enter)="sendModalChat()" />
+                    <button (click)="sendModalChat()" [disabled]="!modalChatInput.trim() || modalChatSending"><mat-icon>send</mat-icon></button>
+                  </div>
+                </div>
+              }
+
+              <!-- Skills tab -->
+              @if (modalTab === 'skills') {
+                <div class="modal-section">
+                  <div class="modal-skills-list">
+                    @for (skill of modalEmployee.skills; track skill.name) {
+                      <div class="modal-skill-item">
+                        <span class="modal-skill-name">{{ skill.name }}</span>
+                        <span class="modal-skill-desc">{{ skill.description }}</span>
+                      </div>
+                    }
+                    @if (!modalEmployee.skills?.length) { <div class="modal-empty">No skills assigned</div> }
+                  </div>
+                  <p class="modal-hint">Manage skills in the Skills tab</p>
+                </div>
+              }
+            </div>
+          </div>
+        </div>
       }
     </div>
   `,
@@ -723,11 +1189,10 @@ import { marked } from 'marked';
 
     /* Overview grid: horizontal project columns */
     .overview-grid {
-      display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px;
-      scrollbar-width: thin;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 12px;
     }
     .project-column {
-      min-width: 220px; max-width: 280px; flex-shrink: 0;
       background: var(--color-bg-card); border: 1px solid var(--color-border-light);
       border-radius: var(--radius-md); overflow: hidden;
     }
@@ -741,6 +1206,75 @@ import { marked } from 'marked';
       font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 100px;
       background: var(--color-border-light); color: var(--color-text-subtle);
     }
+    /* Cycle bar */
+    .cycle-bar {
+      display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+      border-bottom: 1px solid var(--color-border-light); background: rgba(0,0,0,0.1);
+    }
+    .cycle-arrow {
+      border: none; background: none; color: var(--color-text-subtle); cursor: pointer;
+      padding: 0; display: flex; align-items: center; flex-shrink: 0;
+    }
+    .cycle-arrow:hover { color: var(--color-primary); }
+    .cycle-arrow mat-icon { font-size: 18px; width: 18px; height: 18px; }
+    .cycle-phases { display: flex; gap: 3px; flex: 1; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
+    .cycle-phases::-webkit-scrollbar { display: none; }
+    .cycle-phase {
+      display: flex; align-items: center; gap: 4px;
+      padding: 4px 8px; border-radius: var(--radius-sm); cursor: pointer;
+      transition: all 0.15s; flex-shrink: 0; justify-content: center;
+      border: 1px solid transparent; white-space: nowrap;
+    }
+    .cycle-phase:hover { background: rgba(212,175,55,0.08); }
+    .cycle-phase.active {
+      background: rgba(212,175,55,0.15); border: 1px solid var(--color-primary);
+    }
+    .cycle-phase.done { opacity: 0.5; }
+    .cycle-icon { font-size: 0.72rem; line-height: 1; }
+    .cycle-label { font-size: 0.58rem; font-weight: 700; text-transform: uppercase; color: var(--color-text-subtle); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cycle-phase.active .cycle-label { color: var(--color-primary); }
+    .cycle-progress { flex-shrink: 0; }
+    .cycle-count { font-size: 0.65rem; font-weight: 700; color: var(--color-text-subtle); white-space: nowrap; }
+    .cycle-advice-btn {
+      border: none; background: none; color: var(--color-text-subtle); cursor: pointer;
+      padding: 2px; display: flex; flex-shrink: 0;
+    }
+    .cycle-advice-btn:hover { color: #f59e0b; }
+    .cycle-advice-btn mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .cycle-advice-panel {
+      border-bottom: 1px solid var(--color-border-light); background: rgba(245,158,11,0.04);
+    }
+    .cycle-advice-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 10px; font-size: 0.72rem; font-weight: 700; color: #f59e0b;
+    }
+    .cycle-advice-actions { display: flex; gap: 2px; }
+    .cycle-advice-header button { border: none; background: none; color: var(--color-text-subtle); cursor: pointer; display: flex; padding: 2px; }
+    .cycle-advice-header button:hover { color: var(--color-primary); }
+    .cycle-advice-header button mat-icon { font-size: 14px; width: 14px; height: 14px; }
+    .cycle-advice-body {
+      padding: 0 10px 8px; font-size: 0.75rem; color: var(--color-text); line-height: 1.4;
+      white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto;
+    }
+    .direction-edit { padding: 0 10px 8px; }
+    .direction-textarea {
+      width: 100%; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: var(--color-bg); color: var(--color-text); font-family: inherit; font-size: 0.78rem;
+      line-height: 1.4; resize: vertical; outline: none;
+    }
+    .direction-textarea:focus { border-color: var(--color-primary); }
+    .direction-edit-actions { display: flex; gap: 6px; margin-top: 6px; }
+    .dir-save, .dir-cancel {
+      display: flex; align-items: center; gap: 4px; padding: 4px 10px;
+      border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: none; color: var(--color-text-subtle); font-family: inherit;
+      font-size: 0.72rem; font-weight: 600; cursor: pointer;
+    }
+    .dir-save { border-color: #22c55e40; color: #22c55e; }
+    .dir-save:hover { background: #22c55e10; }
+    .dir-cancel:hover { border-color: var(--color-text-subtle); }
+    .dir-save mat-icon, .dir-cancel mat-icon { font-size: 14px; width: 14px; height: 14px; }
+
     .project-col-body { padding: 8px; display: flex; flex-direction: column; gap: 6px; max-height: 400px; overflow-y: auto; }
     .project-col-empty { text-align: center; padding: 1.5rem 0.5rem; font-size: 0.78rem; color: var(--color-text-subtle); font-style: italic; display: flex; flex-direction: column; align-items: center; gap: 8px; }
     .hire-quick-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px dashed var(--color-primary); border-radius: var(--radius-sm); background: none; color: var(--color-primary); font-family: inherit; font-size: .72rem; font-weight: 600; cursor: pointer; }
@@ -759,6 +1293,165 @@ import { marked } from 'marked';
     .mini-info { flex: 1; min-width: 0; }
     .mini-name { display: block; font-weight: 700; font-size: 0.78rem; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .mini-title { display: block; font-size: 0.68rem; color: var(--color-text-subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mini-task {
+      display: block; font-size: 0.62rem; margin-top: 2px; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap; line-height: 1.3;
+    }
+    .mini-task.in_progress { color: #f59e0b; }
+    .mini-task.completed { color: #22c55e; }
+    .mini-task.failed { color: #ef4444; }
+    .mini-task.pending { color: var(--color-text-subtle); }
+    .mini-expand {
+      position: absolute; top: 4px; right: 4px; border: none; background: none;
+      color: var(--color-text-subtle); cursor: pointer; padding: 2px; display: none; opacity: 0.5;
+    }
+    .mini-card { position: relative; }
+    .mini-card:hover .mini-expand { display: flex; }
+    .mini-expand:hover { opacity: 1; color: var(--color-primary); }
+    .mini-expand mat-icon { font-size: 14px; width: 14px; height: 14px; }
+
+    /* Employee Modal */
+    .emp-modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000;
+      display: flex; align-items: center; justify-content: center; padding: 24px;
+    }
+    .emp-modal {
+      background: var(--color-bg-card); border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg, 12px); width: 100%; max-width: 900px;
+      max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    .emp-modal-header {
+      display: flex; align-items: center; gap: 14px; padding: 18px 24px;
+      border-bottom: 1px solid var(--color-border-light);
+    }
+    .emp-modal-avatar { font-size: 2.5rem; }
+    .emp-modal-info { flex: 1; }
+    .emp-modal-info h2 { margin: 0; font-size: 1.1rem; color: var(--color-text); }
+    .emp-modal-title { font-size: .8rem; color: var(--color-text-subtle); }
+    .emp-modal-status { font-size: .7rem; font-weight: 700; margin-left: 8px; }
+    .emp-modal-status.idle { color: var(--color-text-subtle); }
+    .emp-modal-status.working { color: #22c55e; }
+    .emp-modal-controls { display: flex; gap: 6px; }
+
+    .emp-working-status {
+      margin: 0 0 16px; padding: 10px 14px;
+      background: rgba(var(--color-primary-rgb, 99,102,241), 0.08);
+      border: 1px solid rgba(var(--color-primary-rgb, 99,102,241), 0.2);
+      border-radius: 8px;
+    }
+    .emp-working-status.empty { opacity: 0.5; }
+    .emp-working-status.empty .ws-text { font-style: italic; }
+    .ws-header {
+      display: flex; align-items: center; gap: 6px;
+      margin-bottom: 4px; font-size: .75rem; color: var(--color-text-subtle);
+    }
+    .ws-icon { font-size: 16px; width: 16px; height: 16px; color: var(--color-primary); }
+    .ws-label { font-weight: 600; }
+    .ws-time { margin-left: auto; font-size: .7rem; opacity: 0.7; }
+    .ws-text {
+      font-size: .82rem; line-height: 1.4; color: var(--color-text);
+      word-break: break-word;
+    }
+    .ws-text ::ng-deep h1, .ws-text ::ng-deep h2, .ws-text ::ng-deep h3 { margin: 0.5em 0 0.3em; font-size: 0.9em; }
+    .ws-text ::ng-deep ul, .ws-text ::ng-deep ol { margin: 0.3em 0; padding-left: 1.5em; }
+    .ws-text ::ng-deep code { background: rgba(0,0,0,0.15); padding: 1px 4px; border-radius: 3px; font-size: 0.85em; }
+    .ws-text ::ng-deep pre { background: rgba(0,0,0,0.15); padding: 8px; border-radius: 4px; overflow-x: auto; margin: 0.3em 0; }
+    .ws-text ::ng-deep table { border-collapse: collapse; width: 100%; font-size: .78rem; margin: 0.3em 0; }
+    .ws-text ::ng-deep th, .ws-text ::ng-deep td { border: 1px solid var(--color-border-light); padding: 4px 8px; text-align: left; }
+    .ws-text ::ng-deep p { margin: 0.3em 0; }
+    .empty-text { font-style: italic; opacity: 0.5; }
+    .ws-expand {
+      border: none; background: none; color: var(--color-primary);
+      font-family: inherit; font-size: .72rem; font-weight: 600;
+      cursor: pointer; padding: 4px 0; display: block;
+    }
+    .ws-expand:hover { text-decoration: underline; }
+
+    .emp-modal-tabs {
+      display: flex; border-bottom: 1px solid var(--color-border-light);
+      padding: 0 16px; background: rgba(0,0,0,0.08);
+    }
+    .emp-modal-tabs button {
+      display: flex; align-items: center; gap: 6px; padding: 10px 16px;
+      border: none; background: none; color: var(--color-text-subtle);
+      font-family: inherit; font-size: .8rem; font-weight: 600; cursor: pointer;
+      border-bottom: 2px solid transparent; transition: all 0.15s;
+    }
+    .emp-modal-tabs button:hover { color: var(--color-text); }
+    .emp-modal-tabs button.active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+    .emp-modal-tabs button mat-icon { font-size: 18px; width: 18px; height: 18px; }
+
+    .emp-modal-body { flex: 1; overflow-y: auto; padding: 16px 24px; }
+    .modal-section { min-height: 200px; }
+    .modal-empty { text-align: center; padding: 2rem; color: var(--color-text-subtle); font-size: .82rem; }
+    .modal-loading { display: flex; justify-content: center; padding: 2rem; }
+    .modal-hint { font-size: .72rem; color: var(--color-text-subtle); margin-top: 12px; text-align: center; }
+
+    /* Modal task input */
+    .modal-task-input { display: flex; gap: 8px; margin-bottom: 16px; }
+    .modal-textarea {
+      flex: 1; padding: 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: var(--color-bg); color: var(--color-text); font-family: inherit; font-size: .82rem;
+      resize: none; outline: none;
+    }
+    .modal-textarea:focus { border-color: var(--color-primary); }
+    .modal-task-btn {
+      padding: 10px 16px; border: none; border-radius: var(--radius-sm);
+      background: var(--color-primary); color: #0A0A0A; cursor: pointer; display: flex; align-items: flex-start;
+    }
+    .modal-task-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Modal task list */
+    .modal-task-list { display: flex; flex-direction: column; gap: 8px; }
+    .modal-task-item {
+      padding: 10px 14px; border: 1px solid var(--color-border-light);
+      border-radius: var(--radius-sm); background: rgba(255,255,255,0.02);
+    }
+    .modal-task-item.completed { border-left: 3px solid #22c55e; }
+    .modal-task-item.failed { border-left: 3px solid #ef4444; }
+    .modal-task-item.in_progress { border-left: 3px solid #f59e0b; }
+    .modal-task-item.unread { background: rgba(239,68,68,0.04); }
+    .unread-dot { font-size: .6rem; flex-shrink: 0; }
+    .modal-task-top { display: flex; align-items: flex-start; gap: 8px; }
+    .modal-task-icon { flex-shrink: 0; }
+    .modal-task-desc { flex: 1; font-size: .82rem; color: var(--color-text); line-height: 1.4; }
+    .modal-task-time { font-size: .68rem; color: var(--color-text-subtle); flex-shrink: 0; white-space: nowrap; }
+    .modal-task-output { margin-top: 8px; }
+    .modal-task-pre {
+      font-size: .75rem; color: var(--color-text); background: rgba(0,0,0,0.15);
+      padding: 10px; border-radius: var(--radius-sm); overflow-x: auto;
+      white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto;
+      margin: 0; font-family: 'Fira Code', 'Consolas', monospace;
+    }
+    .modal-task-no-output { font-size: .72rem; color: var(--color-text-subtle); font-style: italic; }
+
+    /* Modal logs */
+    .modal-log-filters { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; }
+    .modal-log-list { max-height: 400px; overflow-y: auto; }
+    .modal-log-row { display: flex; gap: 8px; padding: 4px 8px; font-size: .75rem; border-bottom: 1px solid rgba(255,255,255,0.03); }
+    .modal-log-row.error { background: rgba(239,68,68,0.06); }
+    .modal-log-row.task_complete { background: rgba(34,197,94,0.06); }
+    .modal-pagination { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 10px; }
+    .modal-pagination button {
+      padding: 4px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: none; color: var(--color-text-subtle); font-family: inherit; font-size: .75rem; cursor: pointer;
+    }
+    .modal-pagination button:disabled { opacity: 0.3; }
+
+    /* Modal memory */
+    .modal-mem-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+    .modal-mem-list { max-height: 400px; overflow-y: auto; }
+
+    /* Modal chat */
+    .modal-chat { display: flex; flex-direction: column; min-height: 300px; }
+    .modal-chat-body { flex: 1; overflow-y: auto; max-height: 350px; padding-bottom: 8px; }
+
+    /* Modal skills */
+    .modal-skills-list { display: flex; flex-direction: column; gap: 6px; }
+    .modal-skill-item { padding: 8px 12px; border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); }
+    .modal-skill-name { font-size: .82rem; font-weight: 700; color: var(--color-primary); }
+    .modal-skill-desc { display: block; font-size: .75rem; color: var(--color-text-subtle); margin-top: 2px; }
     .mini-status { flex-shrink: 0; }
     .mini-dot { width: 8px; height: 8px; border-radius: 50%; display: block; background: var(--color-border); }
     .mini-status.working .mini-dot { background: #22c55e; }
@@ -837,6 +1530,101 @@ import { marked } from 'marked';
       color: #ef4444; cursor: pointer; padding: 6px; display: flex;
     }
     .fire-btn:hover { background: #ef444410; }
+
+    /* Control buttons */
+    .control-btns { display: flex; gap: 4px; margin-left: auto; }
+    .ctrl-btn {
+      border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); background: none;
+      color: var(--color-text-subtle); cursor: pointer; padding: 6px; display: flex;
+    }
+    .ctrl-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    .ctrl-btn.active { border-color: var(--color-primary); color: var(--color-primary); background: rgba(212,175,55,0.08); }
+    .ctrl-btn.stop { color: #ef4444; border-color: #ef444440; }
+    .ctrl-btn.stop:hover { background: #ef444410; }
+    .ctrl-btn.restart { color: #f59e0b; border-color: #f59e0b40; }
+    .ctrl-btn.restart:hover { background: #f59e0b10; }
+    .ctrl-btn.start { color: #22c55e; border-color: #22c55e40; }
+    .ctrl-btn.start:hover { background: #22c55e10; }
+    .ctrl-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    /* Employee chat */
+    .emp-chat-panel { border: 1px solid var(--color-border-light); border-radius: var(--radius-md); margin-bottom: 1rem; overflow: hidden; }
+    .emp-chat-body { min-height: 120px; max-height: 300px; overflow-y: auto; padding: 12px; }
+    .emp-chat-empty { text-align: center; padding: 1.5rem; color: var(--color-text-subtle); font-size: .82rem; }
+    .emp-chat-empty mat-icon { font-size: 32px; width: 32px; height: 32px; opacity: 0.4; display: block; margin: 0 auto .5rem; }
+    .emp-chat-empty .hint { font-size: .75rem; opacity: 0.7; }
+    .emp-msg { padding: 6px 10px; border-radius: var(--radius-sm); margin-bottom: 6px; max-width: 80%; }
+    .emp-msg.user { background: rgba(212,175,55,0.12); margin-left: auto; text-align: right; }
+    .emp-msg.agent { background: rgba(255,255,255,0.04); }
+    .emp-msg-sender { display: block; font-size: .68rem; font-weight: 700; color: var(--color-text-subtle); margin-bottom: 2px; }
+    .emp-msg-text { font-size: .82rem; color: var(--color-text); line-height: 1.4; }
+    .emp-chat-input { display: flex; border-top: 1px solid var(--color-border-light); }
+    .emp-chat-input input {
+      flex: 1; padding: 10px 14px; border: none; background: var(--color-bg); color: var(--color-text);
+      font-family: inherit; font-size: .82rem; outline: none;
+    }
+    .emp-chat-input button {
+      padding: 8px 14px; border: none; background: var(--color-primary); color: #0A0A0A;
+      cursor: pointer; display: flex; align-items: center;
+    }
+    .emp-chat-input button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Memory panel */
+    .memory-panel { border: 1px solid var(--color-border-light); border-radius: var(--radius-md); margin-bottom: 1rem; overflow: hidden; }
+    .memory-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; border-bottom: 1px solid var(--color-border-light);
+    }
+    .memory-header h3 { margin: 0; font-size: .85rem; display: flex; align-items: center; gap: 6px; color: var(--color-text); }
+    .memory-actions { display: flex; gap: 6px; }
+    .mem-btn {
+      display: flex; align-items: center; gap: 4px; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: none; color: var(--color-text-subtle); font-family: inherit; font-size: .72rem; font-weight: 600;
+      padding: 4px 8px; cursor: pointer;
+    }
+    .mem-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    .mem-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .mem-btn.danger:hover { border-color: #ef4444; color: #ef4444; }
+    .mem-btn mat-icon { font-size: 14px; width: 14px; height: 14px; }
+    .memory-filters { display: flex; gap: 4px; padding: 8px 14px; flex-wrap: wrap; border-bottom: 1px solid var(--color-border-light); }
+    .memory-list { max-height: 400px; overflow-y: auto; padding: 8px; }
+    .mem-card {
+      padding: 10px 12px; border: 1px solid var(--color-border-light); border-radius: var(--radius-sm);
+      margin-bottom: 6px; background: rgba(255,255,255,0.02);
+    }
+    .mem-card.learning { border-left: 3px solid #f59e0b; }
+    .mem-card.goal { border-left: 3px solid #22c55e; }
+    .mem-card.blocker { border-left: 3px solid #ef4444; }
+    .mem-card.decision { border-left: 3px solid #8b5cf6; }
+    .mem-card.preference { border-left: 3px solid var(--color-primary); }
+    .mem-card.context { border-left: 3px solid #64748b; }
+    .mem-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .mem-cat-badge { font-size: .68rem; font-weight: 700; text-transform: uppercase; color: var(--color-text-subtle); }
+    .mem-importance { font-size: .68rem; color: var(--color-text-subtle); margin-left: auto; }
+    .mem-delete {
+      border: none; background: none; color: var(--color-text-subtle); cursor: pointer; padding: 2px; display: flex; opacity: 0.3;
+    }
+    .mem-delete:hover { opacity: 1; color: #ef4444; }
+    .mem-delete mat-icon { font-size: 14px; width: 14px; height: 14px; }
+    .mem-content { margin: 0; font-size: .82rem; color: var(--color-text); line-height: 1.4; }
+    .mem-tags { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+    .mem-tag { font-size: .65rem; padding: 1px 6px; border-radius: 8px; background: rgba(212,175,55,0.12); color: var(--color-primary); }
+    .mem-source { font-size: .65rem; color: var(--color-text-subtle); margin-top: 4px; display: block; }
+    .mem-add { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--color-border-light); }
+    .mem-add-cat {
+      padding: 6px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: var(--color-bg); color: var(--color-text); font-family: inherit; font-size: .75rem; min-width: 90px;
+    }
+    .mem-add-input {
+      flex: 1; padding: 6px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: var(--color-bg); color: var(--color-text); font-family: inherit; font-size: .82rem; outline: none;
+    }
+    .mem-add-input:focus { border-color: var(--color-primary); }
+    .mem-add-btn {
+      border: none; border-radius: var(--radius-sm); background: var(--color-primary); color: #0A0A0A;
+      cursor: pointer; padding: 6px 10px; display: flex;
+    }
+    .mem-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
     /* Logs panel */
     .logs-panel { background: #0d1117; border: 1px solid var(--color-border-light); border-radius: var(--radius-md); margin-bottom: 1rem; overflow: hidden; }
@@ -1129,6 +1917,76 @@ import { marked } from 'marked';
     .mlog-msg { flex: 1; line-height: 1.4; }
     .mlog-time { font-size: 0.68rem; color: var(--color-text-subtle); flex-shrink: 0; white-space: nowrap; }
 
+    /* Skills Configuration */
+    .skills-config { padding: 0.5rem 0; }
+    .skills-title { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: 1.1rem; font-weight: 700; color: var(--color-text); }
+    .skills-title mat-icon { font-size: 22px; width: 22px; height: 22px; color: var(--color-primary); }
+    .skills-subtitle { margin: 0 0 1rem; font-size: .82rem; color: var(--color-text-subtle); }
+
+    .skills-role-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 1rem; }
+    .skills-role-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 8px 14px; border: 1px solid var(--color-border-light); border-radius: var(--radius-sm);
+      background: var(--color-bg-card); color: var(--color-text-subtle);
+      font-family: inherit; font-size: .78rem; font-weight: 600; cursor: pointer; transition: all .15s;
+    }
+    .skills-role-btn:hover { border-color: var(--color-primary); color: var(--color-text); }
+    .skills-role-btn.active { border-color: var(--color-primary); color: var(--color-primary); background: rgba(212,175,55,.06); }
+    .skills-role-avatar { font-size: 1.1rem; }
+    .skills-role-name { white-space: nowrap; }
+    .skills-role-count {
+      font-size: .62rem; font-weight: 700; padding: 1px 6px; border-radius: 100px;
+      background: var(--color-border-light); color: var(--color-text-subtle); min-width: 16px; text-align: center;
+    }
+    .skills-role-btn.active .skills-role-count { background: rgba(212,175,55,.15); color: var(--color-primary); }
+
+    .skills-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .skills-panel {
+      border: 1px solid var(--color-border-light); border-radius: var(--radius-md);
+      background: var(--color-bg-card); overflow: hidden;
+    }
+    .skills-panel-header {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 10px 14px; border-bottom: 1px solid var(--color-border-light); background: rgba(0,0,0,.06);
+    }
+    .skills-panel-header h4 { margin: 0; font-size: .85rem; font-weight: 700; color: var(--color-text); }
+    .skills-search {
+      padding: 4px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: var(--color-bg); color: var(--color-text); font-family: inherit; font-size: .75rem; outline: none; max-width: 160px;
+    }
+    .skills-search:focus { border-color: var(--color-primary); }
+    .skills-search::placeholder { color: var(--color-text-subtle); }
+    .skills-save-btn {
+      display: flex; align-items: center; gap: 4px;
+      padding: 4px 12px; border: none; border-radius: var(--radius-sm);
+      background: var(--color-primary); color: #0A0A0A; font-family: inherit; font-size: .72rem; font-weight: 700; cursor: pointer;
+    }
+    .skills-save-btn:hover { opacity: .9; }
+    .skills-save-btn mat-icon { font-size: 14px; width: 14px; height: 14px; }
+
+    .skills-list { padding: 8px; display: flex; flex-direction: column; gap: 4px; max-height: 400px; overflow-y: auto; }
+    .skill-chip {
+      display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+      border-radius: var(--radius-sm); transition: background .15s;
+    }
+    .skill-chip.assigned { background: rgba(212,175,55,.06); }
+    .skill-chip.available { cursor: pointer; }
+    .skill-chip.available:hover { background: rgba(212,175,55,.08); }
+    .skill-chip-name { font-family: 'Fira Code', monospace; font-size: .78rem; font-weight: 600; color: var(--color-primary); white-space: nowrap; }
+    .skill-chip-desc { flex: 1; font-size: .72rem; color: var(--color-text-subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .skill-chip-remove {
+      width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: none; color: var(--color-text-subtle); cursor: pointer; flex-shrink: 0;
+    }
+    .skill-chip-remove:hover { border-color: #f85149; color: #f85149; }
+    .skill-chip-remove mat-icon { font-size: 14px; width: 14px; height: 14px; }
+    .skill-chip-add { font-size: 18px; width: 18px; height: 18px; color: var(--color-primary); opacity: 0; transition: opacity .15s; flex-shrink: 0; }
+    .skill-chip.available:hover .skill-chip-add { opacity: 1; }
+    .skills-empty { padding: 1.5rem; text-align: center; font-size: .82rem; color: var(--color-text-subtle); font-style: italic; }
+    .skills-empty-state { display: flex; flex-direction: column; align-items: center; padding: 3rem; color: var(--color-text-subtle); }
+    .skills-empty-state mat-icon { font-size: 40px; width: 40px; height: 40px; opacity: .3; margin-bottom: .5rem; }
+
     /* Telegram setup */
     .tg-connected { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .tg-connected-badge {
@@ -1198,7 +2056,7 @@ export class HrComponent implements OnInit, OnDestroy {
   loading = true;
   projects: Project[] = [];
   selectedProjectId = '';
-  activeTab: 'overview' | 'team' | 'hire' | 'comms' | 'manager' = 'overview';
+  activeTab: 'overview' | 'team' | 'hire' | 'comms' | 'skills' | 'manager' = 'overview';
 
   // Overview
   allEmployees: Employee[] = [];
@@ -1240,6 +2098,63 @@ export class HrComponent implements OnInit, OnDestroy {
   comms: CommFile[] = [];
   commsLoading = false;
 
+  // Skills config
+  skillsLoading = false;
+  skillsSelectedRole = '';
+  skillsSearch = '';
+  skillsDirty = false;
+  localSkills: { name: string; description: string }[] = [];
+  assignedSkills: { name: string; description: string; prompt?: string }[] = [];
+  roleSkillsCache: Record<string, { name: string; description: string; prompt?: string }[]> = {};
+
+  get availableSkills(): { name: string; description: string }[] {
+    return this.localSkills.filter(s => !this.assignedSkills.some(a => a.name === s.name));
+  }
+
+  get filteredAvailableSkills(): { name: string; description: string }[] {
+    const q = this.skillsSearch.toLowerCase();
+    return this.availableSkills.filter(s => !q || s.name.includes(q) || s.description.toLowerCase().includes(q));
+  }
+
+  // Cycle
+  cyclePhases: ('idle' | 'pending_directions' | 'active' | 'dev' | 'qa' | 'done')[] = ['idle', 'pending_directions', 'active', 'dev', 'qa', 'done'];
+  expandedCycleAdvice = '';
+  editingDirection = false;
+  directionEditText = '';
+
+  // Modal
+  modalEmployee: Employee | null = null;
+  modalTab: 'tasks' | 'logs' | 'memory' | 'chat' | 'skills' = 'tasks';
+  modalTaskInput = '';
+  modalLogs: any[] = [];
+  modalLogsLoading = false;
+  modalLogFilter = '';
+  modalLogPage = 1;
+  modalLogPages = 1;
+  modalMemories: any[] = [];
+  modalMemLoading = false;
+  modalCompacting = false;
+  modalChatMessages: { role: 'user' | 'agent'; text: string }[] = [];
+  modalChatInput = '';
+  modalChatSending = false;
+  wsExpanded = false;
+
+  // Detail tabs
+  detailTab: 'task' | 'chat' | 'memory' = 'task';
+
+  // Chat
+  chatMessages: { role: 'user' | 'agent'; text: string }[] = [];
+  chatInput = '';
+  chatSending = false;
+
+  // Memory
+  employeeMemories: any[] = [];
+  memoriesLoading = false;
+  memoryFilter = '';
+  compacting = false;
+  newMemCategory = 'learning';
+  newMemContent = '';
+
   // Manager
   managerRunning = false;
   managerLog: { timestamp: string; type: string; message: string }[] = [];
@@ -1252,9 +2167,12 @@ export class HrComponent implements OnInit, OnDestroy {
   telegramSetupResult: any = null;
   telegramTesting = false;
 
+  private wsSubs: Subscription[] = [];
+
   constructor(
     private employeeService: EmployeeService,
     private projectService: ProjectService,
+    private wsService: WebSocketService,
     private http: HttpClient,
     private snackBar: MatSnackBar,
     private sanitizer: DomSanitizer,
@@ -1272,10 +2190,61 @@ export class HrComponent implements OnInit, OnDestroy {
     this.employeeService.getRoles().subscribe({
       next: (roles) => this.roles = roles,
     });
+
+    // Real-time WebSocket updates
+    this.wsService.connect();
+
+    this.wsSubs.push(
+      this.wsService.onEmployeeStatus().subscribe((ev) => {
+        // Update employee status in all lists
+        const emp = this.findEmployee(ev.employeeId);
+        if (emp) emp.status = ev.status as any;
+        if (this.modalEmployee?._id === ev.employeeId) this.modalEmployee.status = ev.status as any;
+      }),
+      this.wsService.onTaskUpdate().subscribe((ev) => {
+        const emp = this.findEmployee(ev.employeeId);
+        if (emp) {
+          const task = emp.taskHistory.find(t => t.taskId === ev.taskId);
+          if (task) {
+            task.status = ev.status as any;
+            if (ev.result) task.result = ev.result;
+          }
+        }
+        if (this.modalEmployee?._id === ev.employeeId) {
+          const task = this.modalEmployee.taskHistory.find(t => t.taskId === ev.taskId);
+          if (task) {
+            task.status = ev.status as any;
+            if (ev.result) task.result = ev.result;
+          }
+        }
+      }),
+      this.wsService.onTaskNew().subscribe((ev) => {
+        const emp = this.findEmployee(ev.employeeId);
+        if (emp && !emp.taskHistory.find(t => t.taskId === ev.taskId)) {
+          emp.taskHistory.push({ taskId: ev.taskId, description: ev.description, status: 'in_progress', resultRead: false, startedAt: new Date().toISOString() });
+        }
+      }),
+      this.wsService.onEmployeeLog().subscribe((ev) => {
+        // Append to modal logs if viewing this employee
+        if (this.modalEmployee?._id === ev.employeeId && this.modalTab === 'logs') {
+          this.modalLogs.unshift({ _id: Date.now().toString(), ...ev, createdAt: ev.timestamp });
+        }
+      }),
+    );
   }
 
   ngOnDestroy(): void {
     this.agentSub?.unsubscribe();
+    this.wsSubs.forEach(s => s.unsubscribe());
+    this.wsService.disconnect();
+  }
+
+  private findEmployee(id: string): Employee | null {
+    for (const pg of this.projectGroups) {
+      const emp = pg.employees.find(e => e._id === id);
+      if (emp) return emp;
+    }
+    return this.allEmployees.find(e => e._id === id) || null;
   }
 
   get filteredRoles(): RoleTemplate[] {
@@ -1309,6 +2278,9 @@ export class HrComponent implements OnInit, OnDestroy {
     this.selectedEmployee = emp;
     this.taskError = '';
     this.agentEntries = [];
+    this.detailTab = 'task';
+    this.chatMessages = [];
+    this.employeeMemories = [];
     this.employeeService.getById(emp._id!).subscribe({
       next: (fresh) => this.selectedEmployee = fresh,
     });
@@ -1527,27 +2499,21 @@ export class HrComponent implements OnInit, OnDestroy {
 
   restartEmployee(): void {
     if (!this.selectedEmployee) return;
-    // Stop first, then re-assign the last task
-    const lastTask = this.selectedEmployee.taskHistory?.[this.selectedEmployee.taskHistory.length - 1];
-    const taskToRerun = this.lastTaskInput || lastTask?.description || '';
-    if (!taskToRerun) {
-      this.snackBar.open('No task to restart', 'Close', { duration: 2000 });
-      return;
-    }
-    this.employeeService.stopTask(this.selectedEmployee._id!).subscribe({
-      next: () => {
+    this.employeeService.restartEmployee(this.selectedEmployee._id!).subscribe({
+      next: (res) => {
         this.agentRunning = false;
         this.agentSub?.unsubscribe();
         this.agentSub = null;
-        if (this.selectedEmployee) {
-          this.selectedEmployee.status = 'idle';
-          this.updateOverviewStatus(this.selectedEmployee._id!, 'idle');
-        }
-        // Brief delay then re-assign
-        setTimeout(() => {
-          this.taskInput = taskToRerun;
-          this.assignTask();
-        }, 500);
+        this.snackBar.open(res.message, 'Close', { duration: 3000 });
+        // Refresh employee data
+        this.employeeService.getById(this.selectedEmployee!._id!).subscribe({
+          next: (fresh) => {
+            this.selectedEmployee = fresh;
+            if (this.modalEmployee?._id === fresh._id) this.modalEmployee = fresh;
+          },
+        });
+        this.loadEmployees();
+        this.loadAllEmployees();
       },
       error: () => this.snackBar.open('Failed to restart', 'Close', { duration: 3000 }),
     });
@@ -1628,6 +2594,69 @@ export class HrComponent implements OnInit, OnDestroy {
     return d.toLocaleDateString();
   }
 
+  // Skills config
+  loadSkillsConfig(): void {
+    if (this.localSkills.length) return; // already loaded
+    this.skillsLoading = true;
+    this.employeeService.getLocalSkills().subscribe({
+      next: (skills) => {
+        this.localSkills = skills;
+        this.skillsLoading = false;
+      },
+      error: () => {
+        this.skillsLoading = false;
+        this.snackBar.open('Failed to load local skills', 'Close', { duration: 3000 });
+      },
+    });
+  }
+
+  selectSkillsRole(role: string): void {
+    this.skillsSelectedRole = role;
+    this.skillsDirty = false;
+    this.skillsSearch = '';
+
+    // Load from cache or fetch
+    if (this.roleSkillsCache[role]) {
+      this.assignedSkills = [...this.roleSkillsCache[role]];
+      return;
+    }
+
+    this.employeeService.getRoleSkills(role).subscribe({
+      next: (skills) => {
+        this.assignedSkills = skills;
+        this.roleSkillsCache[role] = [...skills];
+      },
+      error: () => { this.assignedSkills = []; },
+    });
+  }
+
+  getRoleSkillCount(role: string): number {
+    return (this.roleSkillsCache[role] || []).length;
+  }
+
+  assignSkill(skill: { name: string; description: string }): void {
+    if (this.assignedSkills.some(s => s.name === skill.name)) return;
+    this.assignedSkills.push({ name: skill.name, description: skill.description });
+    this.skillsDirty = true;
+  }
+
+  unassignSkill(name: string): void {
+    this.assignedSkills = this.assignedSkills.filter(s => s.name !== name);
+    this.skillsDirty = true;
+  }
+
+  saveRoleSkills(): void {
+    if (!this.skillsSelectedRole) return;
+    this.employeeService.setRoleSkills(this.skillsSelectedRole, this.assignedSkills).subscribe({
+      next: (res) => {
+        this.roleSkillsCache[this.skillsSelectedRole] = [...this.assignedSkills];
+        this.skillsDirty = false;
+        this.snackBar.open(`Skills saved — ${res.updated} employee(s) updated`, 'Close', { duration: 2000 });
+      },
+      error: () => this.snackBar.open('Failed to save skills', 'Close', { duration: 3000 }),
+    });
+  }
+
   // Manager
   loadManagerLog(): void {
     this.managerLoading = true;
@@ -1690,6 +2719,278 @@ export class HrComponent implements OnInit, OnDestroy {
         this.telegramTesting = false;
         this.snackBar.open('Test failed', 'Close', { duration: 3000 });
       },
+    });
+  }
+
+  // ── Chat ──
+
+  sendChatMessage(emp: Employee): void {
+    const msg = this.chatInput.trim();
+    if (!msg) return;
+    this.chatMessages.push({ role: 'user', text: msg });
+    this.chatInput = '';
+    this.chatSending = true;
+
+    this.employeeService.sendMessage(emp._id!, msg).subscribe({
+      next: (res) => {
+        this.chatSending = false;
+        this.chatMessages.push({ role: 'agent', text: res.detail || (res.delivered ? 'Message delivered' : 'Not delivered — employee may not be working') });
+      },
+      error: (err) => {
+        this.chatSending = false;
+        this.chatMessages.push({ role: 'agent', text: `Error: ${err.error?.error || err.message}` });
+      },
+    });
+  }
+
+  // ── Memory ──
+
+  loadMemories(emp: Employee): void {
+    this.memoriesLoading = true;
+    this.employeeService.getMemories(emp._id!, this.memoryFilter || undefined).subscribe({
+      next: (mems) => { this.employeeMemories = mems; this.memoriesLoading = false; },
+      error: () => { this.memoriesLoading = false; },
+    });
+  }
+
+  compactLogs(emp: Employee): void {
+    this.compacting = true;
+    this.employeeService.compactLogs(emp._id!).subscribe({
+      next: (res) => {
+        this.compacting = false;
+        this.snackBar.open(res.summary, 'Close', { duration: 3000 });
+        this.loadMemories(emp);
+      },
+      error: (err) => {
+        this.compacting = false;
+        this.snackBar.open(err.error?.error || 'Compaction failed', 'Close', { duration: 3000 });
+      },
+    });
+  }
+
+  wipeMemories(emp: Employee): void {
+    if (!confirm(`Wipe all memories for ${emp.name}? This cannot be undone.`)) return;
+    this.employeeService.wipeMemories(emp._id!).subscribe({
+      next: (res) => {
+        this.snackBar.open(res.message, 'Close', { duration: 2000 });
+        this.employeeMemories = [];
+      },
+      error: () => this.snackBar.open('Wipe failed', 'Close', { duration: 3000 }),
+    });
+  }
+
+  deleteMemory(emp: Employee, memoryId: string): void {
+    this.employeeService.deleteMemory(emp._id!, memoryId).subscribe({
+      next: () => {
+        this.employeeMemories = this.employeeMemories.filter(m => m._id !== memoryId);
+      },
+      error: () => this.snackBar.open('Delete failed', 'Close', { duration: 3000 }),
+    });
+  }
+
+  addManualMemory(emp: Employee): void {
+    const content = this.newMemContent.trim();
+    if (!content) return;
+    this.employeeService.addMemory(emp._id!, {
+      category: this.newMemCategory,
+      content,
+      importance: 5,
+    }).subscribe({
+      next: (mem) => {
+        this.employeeMemories.unshift(mem);
+        this.newMemContent = '';
+        this.snackBar.open('Memory added', 'Close', { duration: 2000 });
+      },
+      error: () => this.snackBar.open('Failed to add memory', 'Close', { duration: 3000 }),
+    });
+  }
+
+  memoryCategoryIcon(cat: string): string {
+    const map: Record<string, string> = {
+      goal: '🎯', learning: '💡', blocker: '🚧', decision: '⚖️', preference: '⭐', context: '📋',
+    };
+    return map[cat] || '📝';
+  }
+
+  // ── Cycle ──
+
+  // ── Modal ──
+
+  openEmployeeModal(emp: Employee, projectId: string): void {
+    this.selectedProjectId = projectId;
+    this.selectedEmployee = emp;
+    this.modalTab = 'tasks';
+    this.modalChatMessages = [];
+    this.modalLogs = [];
+    this.modalMemories = [];
+    this.modalTaskInput = '';
+    this.wsExpanded = false;
+    this.employeeService.getById(emp._id!).subscribe({
+      next: (fresh) => { this.modalEmployee = fresh; this.selectedEmployee = fresh; },
+      error: () => { this.modalEmployee = emp; },
+    });
+  }
+
+  closeModal(): void {
+    this.modalEmployee = null;
+  }
+
+  loadModalLogs(): void {
+    if (!this.modalEmployee) return;
+    this.modalLogsLoading = true;
+    this.employeeService.getLogs(this.modalEmployee._id!, this.modalLogPage, 100, this.modalLogFilter || undefined).subscribe({
+      next: (res) => { this.modalLogs = res.logs; this.modalLogPages = res.pages; this.modalLogsLoading = false; },
+      error: () => { this.modalLogsLoading = false; },
+    });
+  }
+
+  loadModalMemories(): void {
+    if (!this.modalEmployee) return;
+    this.modalMemLoading = true;
+    this.employeeService.getMemories(this.modalEmployee._id!).subscribe({
+      next: (mems) => { this.modalMemories = mems; this.modalMemLoading = false; },
+      error: () => { this.modalMemLoading = false; },
+    });
+  }
+
+  compactModalLogs(): void {
+    if (!this.modalEmployee) return;
+    this.modalCompacting = true;
+    this.employeeService.compactLogs(this.modalEmployee._id!).subscribe({
+      next: (res) => { this.modalCompacting = false; this.snackBar.open(res.summary, 'Close', { duration: 3000 }); this.loadModalMemories(); },
+      error: () => { this.modalCompacting = false; },
+    });
+  }
+
+  wipeModalMemories(): void {
+    if (!this.modalEmployee || !confirm(`Wipe all memories for ${this.modalEmployee.name}?`)) return;
+    this.employeeService.wipeMemories(this.modalEmployee._id!).subscribe({
+      next: () => { this.modalMemories = []; this.snackBar.open('Memories wiped', 'Close', { duration: 2000 }); },
+    });
+  }
+
+  deleteModalMemory(memoryId: string): void {
+    if (!this.modalEmployee) return;
+    this.employeeService.deleteMemory(this.modalEmployee._id!, memoryId).subscribe({
+      next: () => { this.modalMemories = this.modalMemories.filter(m => m._id !== memoryId); },
+    });
+  }
+
+  sendModalChat(): void {
+    if (!this.modalEmployee || !this.modalChatInput.trim()) return;
+    const msg = this.modalChatInput.trim();
+    this.modalChatMessages.push({ role: 'user', text: msg });
+    this.modalChatInput = '';
+    this.modalChatSending = true;
+    this.employeeService.sendMessage(this.modalEmployee._id!, msg).subscribe({
+      next: (res) => {
+        this.modalChatSending = false;
+        this.modalChatMessages.push({ role: 'agent', text: res.detail || (res.delivered ? 'Delivered' : 'Not delivered') });
+      },
+      error: (err) => {
+        this.modalChatSending = false;
+        this.modalChatMessages.push({ role: 'agent', text: `Error: ${err.error?.error || err.message}` });
+      },
+    });
+  }
+
+  assignModalTask(): void {
+    if (!this.modalEmployee || !this.modalTaskInput.trim()) return;
+    const task = this.modalTaskInput.trim();
+    this.modalTaskInput = '';
+    this.employeeService.assignTask(this.modalEmployee._id!, task).subscribe({
+      next: () => {
+        this.snackBar.open('Task assigned', 'Close', { duration: 2000 });
+        // Refresh employee
+        this.employeeService.getById(this.modalEmployee!._id!).subscribe({
+          next: (fresh) => { this.modalEmployee = fresh; },
+        });
+      },
+      error: (err) => this.snackBar.open(err.error?.error || 'Failed', 'Close', { duration: 3000 }),
+    });
+  }
+
+  getLatestTask(emp: Employee): any {
+    if (!emp.taskHistory?.length) return null;
+    return emp.taskHistory[emp.taskHistory.length - 1];
+  }
+
+  taskStatusIcon(status: string): string {
+    const map: Record<string, string> = { pending: '⏳', in_progress: '🔄', completed: '✅', failed: '❌' };
+    return map[status] || '•';
+  }
+
+  cyclePhaseIcon(phase: string): string {
+    const map: Record<string, string> = { idle: '⬚', pending_directions: '🧭', active: '📋', dev: '🔨', qa: '🧪', done: '✅' };
+    return map[phase] || '•';
+  }
+
+  isCyclePhaseDone(project: Project, phase: string): boolean {
+    const order = ['idle', 'active', 'dev', 'qa', 'done'];
+    const current = project.strategicCycle?.status || 'idle';
+    return order.indexOf(phase) < order.indexOf(current);
+  }
+
+  setCycleStatus(project: Project, phase: 'idle' | 'pending_directions' | 'active' | 'dev' | 'qa' | 'done'): void {
+    if (!project._id) return;
+    const current = project.strategicCycle?.status || 'idle';
+    if (phase === current) return;
+
+    const msg = phase === 'idle'
+      ? `Reset cycle for ${project.name}? This clears the current advice.`
+      : `Set ${project.name} cycle to "${phase}"?`;
+    if (!confirm(msg)) return;
+
+    this.projectService.update(project._id, {
+      strategicCycle: {
+        status: phase,
+        advice: phase === 'idle' ? '' : (project.strategicCycle?.advice || ''),
+        advisorRole: phase === 'idle' ? '' : (project.strategicCycle?.advisorRole || ''),
+        advisorName: phase === 'idle' ? '' : (project.strategicCycle?.advisorName || ''),
+        startedAt: phase === 'idle' ? undefined : (project.strategicCycle?.startedAt || new Date().toISOString()),
+        completedAt: phase === 'done' ? new Date().toISOString() : undefined,
+        devTasksTotal: project.strategicCycle?.devTasksTotal || 0,
+        devTasksDone: project.strategicCycle?.devTasksDone || 0,
+        qaTasksTotal: project.strategicCycle?.qaTasksTotal || 0,
+        qaTasksDone: project.strategicCycle?.qaTasksDone || 0,
+      } as any,
+    }).subscribe({
+      next: (updated) => {
+        project.strategicCycle = updated.strategicCycle;
+        this.snackBar.open(`Cycle → ${phase}`, 'Close', { duration: 2000 });
+      },
+      error: () => this.snackBar.open('Failed to update cycle', 'Close', { duration: 3000 }),
+    });
+  }
+
+  scrollCycle(event: Event, direction: number): void {
+    const btn = event.currentTarget as HTMLElement;
+    const bar = btn.closest('.cycle-bar');
+    const phases = bar?.querySelector('.cycle-phases') as HTMLElement;
+    if (phases) {
+      phases.scrollBy({ left: direction * 100, behavior: 'smooth' });
+    }
+  }
+
+  toggleCycleAdvice(projectId: string): void {
+    this.expandedCycleAdvice = this.expandedCycleAdvice === projectId ? '' : projectId;
+    this.editingDirection = false;
+  }
+
+  startEditDirection(project: Project): void {
+    this.directionEditText = project.strategicDirection || project.strategicCycle?.advice || '';
+    this.editingDirection = true;
+  }
+
+  saveDirection(project: Project): void {
+    if (!project._id) return;
+    this.projectService.update(project._id, { strategicDirection: this.directionEditText }).subscribe({
+      next: (updated) => {
+        project.strategicDirection = updated.strategicDirection;
+        this.editingDirection = false;
+        this.snackBar.open('Strategic direction saved', 'Close', { duration: 2000 });
+      },
+      error: () => this.snackBar.open('Failed to save', 'Close', { duration: 3000 }),
     });
   }
 }

@@ -3,6 +3,7 @@ export interface EmployeeTask {
   description: string;
   status: 'pending' | 'in_progress' | 'completed' | 'failed';
   result?: string;
+  resultRead: boolean;
   startedAt: string;
   completedAt?: string;
 }
@@ -10,7 +11,7 @@ export interface EmployeeTask {
 export interface EmployeeSkill {
   name: string;
   description: string;
-  prompt: string;
+  prompt?: string;
 }
 
 export interface Employee {
@@ -29,6 +30,8 @@ export interface Employee {
   status: 'idle' | 'working' | 'paused';
   currentTask?: string;
   lastActivity?: string;
+  workingStatus?: string;
+  workingStatusAt?: string;
   taskHistory: EmployeeTask[];
   hiredAt: string;
 }

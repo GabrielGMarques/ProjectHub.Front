@@ -100,6 +100,40 @@ export class ProjectService {
     return this.http.post<any>(`${this.apiUrl}/${projectId}/files/open-in-explorer`, { path: relativePath || '', root });
   }
 
+  // Applications
+  addApplication(projectId: string, app: any): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/${projectId}/applications`, app);
+  }
+
+  updateApplication(projectId: string, appName: string, updates: any): Observable<any> {
+    return this.http.put<any>(`${this.apiUrl}/${projectId}/applications/${encodeURIComponent(appName)}`, updates);
+  }
+
+  removeApplication(projectId: string, appName: string): Observable<any> {
+    return this.http.delete<any>(`${this.apiUrl}/${projectId}/applications/${encodeURIComponent(appName)}`);
+  }
+
+  // Infrastructure
+  getInfraStatus(): Observable<any> {
+    return this.http.get<any>(`${environment.apiUrl}/infrastructure/status`);
+  }
+
+  startGateway(): Observable<any> {
+    return this.http.post<any>(`${environment.apiUrl}/infrastructure/gateway/start`, {});
+  }
+
+  restartGateway(): Observable<any> {
+    return this.http.post<any>(`${environment.apiUrl}/infrastructure/gateway/restart`, {});
+  }
+
+  startNgrok(): Observable<any> {
+    return this.http.post<any>(`${environment.apiUrl}/infrastructure/ngrok/start`, {});
+  }
+
+  stopNgrok(): Observable<any> {
+    return this.http.post<any>(`${environment.apiUrl}/infrastructure/ngrok/stop`, {});
+  }
+
   getTimeAllocation(): Observable<{ projectId: string; name: string; timeConsumption: number }[]> {
     return this.http.get<{ projectId: string; name: string; timeConsumption: number }[]>(
       `${environment.apiUrl}/analytics/time-allocation`

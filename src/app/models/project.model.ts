@@ -131,6 +131,44 @@ export interface Skill {
   isBuiltIn: boolean;
 }
 
+export interface AppScreenshot {
+  filename: string;
+  originalName: string;
+  caption: string;
+  takenBy: string;
+  takenAt: string;
+}
+
+export interface Application {
+  name: string;
+  port: number;
+  type: 'frontend' | 'backend' | 'fullstack' | 'service' | 'database';
+  dockerService: string;
+  command: string;
+  status: 'running' | 'stopped' | 'building' | 'error';
+  tested: boolean;
+  basePath: string;
+  description: string;
+  purpose: string;
+  testInstructions: string;
+  screenshots: AppScreenshot[];
+  // UI-only toggle
+  _showTestInstructions?: boolean;
+}
+
+export interface StrategicCycle {
+  status: 'idle' | 'pending_directions' | 'active' | 'dev' | 'qa' | 'done';
+  advice: string;
+  advisorRole: string;
+  advisorName: string;
+  startedAt?: string;
+  completedAt?: string;
+  devTasksTotal: number;
+  devTasksDone: number;
+  qaTasksTotal: number;
+  qaTasksDone: number;
+}
+
 export interface Project {
   _id?: string;
   userId?: string;
@@ -145,6 +183,8 @@ export interface Project {
   impact: 'low' | 'medium' | 'high';
   niche: string;
   onHolding: boolean;
+  strategicDirection: string;
+  strategicCycle: StrategicCycle;
   timeConsumption: number;
   timeSpent: number;
   timeSpentPerDay: WeeklySchedule;
@@ -153,6 +193,7 @@ export interface Project {
   monetizationPlan: string;
   schedule: WeeklySchedule;
   documents: ProjectDocument[];
+  applications: Application[];
   marketingResearch: MarketingResearch;
   agentSessions: AgentSession[];
   coachMessages: ChatMessage[];
