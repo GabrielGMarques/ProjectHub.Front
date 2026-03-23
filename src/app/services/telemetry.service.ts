@@ -85,6 +85,39 @@ export interface TelemetryStats {
   sourceBreakdown: { source: string; count: number }[];
 }
 
+export interface TokenUsageStats {
+  totalTokens: number;
+  totalCostUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  totalCalls: number;
+  avgTokensPerCall: number;
+  avgCostPerCall: number;
+  bySource: { source: string; tokens: number; cost: number; calls: number }[];
+  byEmployee: { employeeId: string; name: string; avatar: string; role: string; tokens: number; cost: number; calls: number }[];
+  byModel: { aiModel: string; tokens: number; cost: number; calls: number }[];
+  dailyBreakdown: { date: string; tokens: number; cost: number; calls: number }[];
+}
+
+export interface TokenUsageRecord {
+  _id: string;
+  source: string;
+  aiModel: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  durationMs: number;
+  numTurns: number;
+  employeeId?: { _id: string; name: string; avatar: string; role: string };
+  projectId?: { _id: string; name: string };
+  createdAt: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class TelemetryService {
   private apiUrl = `${environment.apiUrl}/telemetry`;
@@ -118,5 +151,13 @@ export class TelemetryService {
     const params: any = {};
     if (category) params.category = category;
     return this.http.get<ManagerLogsResponse>(`${this.apiUrl}/manager-logs`, { params });
+  }
+
+  getTokenUsage(days: number = 7): Observable<TokenUsageStats> {
+    return this.http.get<TokenUsageStats>(`${this.apiUrl}/token-usage`, { params: { days: days.toString() } });
+  }
+
+  getRecentTokenUsage(limit: number = 50): Observable<TokenUsageRecord[]> {
+    return this.http.get<TokenUsageRecord[]>(`${this.apiUrl}/token-usage/recent`, { params: { limit: limit.toString() } });
   }
 }

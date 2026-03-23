@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
@@ -8,7 +8,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { HttpClient } from '@angular/common/http';
 import { Subscription } from 'rxjs';
-import { EmployeeService } from '../../services/employee.service';
+import { EmployeeService, DebugConfigResponse, StatusHistoryEntry } from '../../services/employee.service';
 import { ProjectService } from '../../services/project.service';
 import { WebSocketService, WSEmployeeStatus, WSTaskUpdate, WSEmployeeLog } from '../../services/websocket.service';
 import { Employee, EmployeeSkill, RoleTemplate, CommFile } from '../../models/employee.model';
@@ -281,7 +281,7 @@ import { marked } from 'marked';
                                 }
                               </div>
                             }
-                            <span class="mem-source">{{ mem.source }} · {{ mem.createdAt | date:'MM/dd HH:mm' }} · accessed {{ mem.accessCount }}x</span>
+                            <span class="mem-source">{{ mem.source }} · {{ mem.createdAt | date:'MM/dd HH:mm:ss' }} · accessed {{ mem.accessCount }}x</span>
                           </div>
                         }
                       }
@@ -767,102 +767,121 @@ import { marked } from 'marked';
         <!-- Manager tab -->
         @if (activeTab === 'manager') {
           <div class="manager-panel">
-            <!-- Telegram setup -->
-            <div class="manager-section">
-              <h3><mat-icon>send</mat-icon> Telegram Bot</h3>
-
-              @if (telegramStatus?.chatId) {
-                <!-- Connected state -->
-                <div class="tg-connected">
-                  <div class="tg-connected-badge">
-                    <mat-icon>check_circle</mat-icon>
-                    <span>Connected</span>
-                  </div>
-                  <span class="tg-chat-id">Chat ID: {{ telegramStatus.chatId }}</span>
-                  <button class="tg-btn" (click)="testTelegram()"><mat-icon>send</mat-icon> Send Test</button>
-                  <button class="tg-btn" (click)="telegramStatus.chatId = null"><mat-icon>settings</mat-icon> Reconfigure</button>
+            <!-- Alfred Profile Card -->
+            <div class="alfred-card">
+              <div class="alfred-header">
+                <span class="alfred-avatar">🎩</span>
+                <div class="alfred-info">
+                  <h2 class="alfred-name">Alfred</h2>
+                  <span class="alfred-title">AI Manager</span>
                 </div>
-              } @else {
-                <!-- Setup wizard -->
-                <div class="tg-wizard">
-                  <div class="tg-step">
-                    <span class="tg-step-num">1</span>
-                    <div class="tg-step-body">
-                      <strong>Create a bot</strong>
-                      <p>Open Telegram, search for <strong>&#64;BotFather</strong>, send <code>/newbot</code> and follow the steps. Copy the token it gives you.</p>
-                    </div>
-                  </div>
-                  <div class="tg-step">
-                    <span class="tg-step-num">2</span>
-                    <div class="tg-step-body">
-                      <strong>Paste your Bot Token</strong>
-                      <input class="tg-token-input" [(ngModel)]="telegramTokenInput" placeholder="e.g. 123456789:ABCdefGHIjklMNOpqrsTUVwxyz" />
-                    </div>
-                  </div>
-                  <div class="tg-step">
-                    <span class="tg-step-num">3</span>
-                    <div class="tg-step-body">
-                      <strong>Send /start to your bot</strong>
-                      <p>Open the bot you just created in Telegram and send it the message <code>/start</code>.</p>
-                    </div>
-                  </div>
-                  <div class="tg-step">
-                    <span class="tg-step-num">4</span>
-                    <div class="tg-step-body">
-                      <strong>Complete Setup</strong>
-                      <p>Click the button below. It will auto-detect your chat ID and send you a test message.</p>
-                      <button class="tg-btn primary" (click)="setupTelegram()" [disabled]="!telegramTokenInput.trim() || telegramSetupLoading">
-                        @if (telegramSetupLoading) {
-                          <mat-spinner diameter="16"></mat-spinner>
-                        } @else {
-                          <mat-icon>bolt</mat-icon>
-                        }
-                        Connect Bot
-                      </button>
-                    </div>
-                  </div>
+                <div class="alfred-status-group">
+                  <span class="alfred-status-badge" [class.active]="managerRunning" [class.stopped]="!managerRunning">
+                    @if (managerRunning) {
+                      <mat-spinner diameter="10"></mat-spinner>
+                    } @else {
+                      <span class="alfred-dot"></span>
+                    }
+                    {{ managerRunning ? 'Active' : 'Stopped' }}
+                  </span>
+                </div>
+                <div class="alfred-controls">
+                  <button class="ctrl-btn" (click)="runManagerCheck()" [disabled]="managerLoading" matTooltip="Run check now">
+                    <mat-icon>{{ managerLoading ? 'hourglass_top' : 'refresh' }}</mat-icon>
+                  </button>
+                  <button class="ctrl-btn" [class.active]="alfredShowTelegram" (click)="alfredShowTelegram = !alfredShowTelegram" matTooltip="Telegram">
+                    <mat-icon>send</mat-icon>
+                  </button>
+                </div>
+              </div>
 
-                  @if (telegramSetupResult) {
-                    <div class="tg-result" [class.complete]="telegramSetupResult.step === 'complete'" [class.waiting]="telegramSetupResult.step === 'waiting'" [class.error]="telegramSetupResult.step === 'error'">
-                      <mat-icon>{{ telegramSetupResult.step === 'complete' ? 'check_circle' : telegramSetupResult.step === 'waiting' ? 'hourglass_top' : 'error' }}</mat-icon>
-                      <div>
-                        <span>{{ telegramSetupResult.message }}</span>
-                        @if (telegramSetupResult.chatId) {
-                          <p>Chat ID: <code>{{ telegramSetupResult.chatId }}</code></p>
-                        }
+              <!-- Telegram (collapsible) -->
+              @if (alfredShowTelegram) {
+                <div class="alfred-telegram">
+                  @if (telegramStatus?.chatId) {
+                    <div class="tg-connected">
+                      <div class="tg-connected-badge">
+                        <mat-icon>check_circle</mat-icon>
+                        <span>Connected</span>
                       </div>
+                      <span class="tg-chat-id">Chat ID: {{ telegramStatus.chatId }}</span>
+                      <button class="tg-btn" (click)="testTelegram()"><mat-icon>send</mat-icon> Test</button>
+                      <button class="tg-btn" (click)="telegramStatus.chatId = null"><mat-icon>settings</mat-icon> Reconfigure</button>
+                    </div>
+                  } @else {
+                    <div class="tg-wizard">
+                      <div class="tg-step">
+                        <span class="tg-step-num">1</span>
+                        <div class="tg-step-body">
+                          <strong>Create a bot</strong>
+                          <p>Open Telegram, search for <strong>&#64;BotFather</strong>, send <code>/newbot</code> and follow the steps. Copy the token it gives you.</p>
+                        </div>
+                      </div>
+                      <div class="tg-step">
+                        <span class="tg-step-num">2</span>
+                        <div class="tg-step-body">
+                          <strong>Paste your Bot Token</strong>
+                          <input class="tg-token-input" [(ngModel)]="telegramTokenInput" placeholder="e.g. 123456789:ABCdefGHIjklMNOpqrsTUVwxyz" />
+                        </div>
+                      </div>
+                      <div class="tg-step">
+                        <span class="tg-step-num">3</span>
+                        <div class="tg-step-body">
+                          <strong>Send /start to your bot</strong>
+                          <p>Open the bot you just created in Telegram and send it <code>/start</code>.</p>
+                        </div>
+                      </div>
+                      <div class="tg-step">
+                        <span class="tg-step-num">4</span>
+                        <div class="tg-step-body">
+                          <button class="tg-btn primary" (click)="setupTelegram()" [disabled]="!telegramTokenInput.trim() || telegramSetupLoading">
+                            @if (telegramSetupLoading) { <mat-spinner diameter="16"></mat-spinner> } @else { <mat-icon>bolt</mat-icon> }
+                            Connect Bot
+                          </button>
+                        </div>
+                      </div>
+                      @if (telegramSetupResult) {
+                        <div class="tg-result" [class.complete]="telegramSetupResult.step === 'complete'" [class.waiting]="telegramSetupResult.step === 'waiting'" [class.error]="telegramSetupResult.step === 'error'">
+                          <mat-icon>{{ telegramSetupResult.step === 'complete' ? 'check_circle' : telegramSetupResult.step === 'waiting' ? 'hourglass_top' : 'error' }}</mat-icon>
+                          <div>
+                            <span>{{ telegramSetupResult.message }}</span>
+                            @if (telegramSetupResult.chatId) { <p>Chat ID: <code>{{ telegramSetupResult.chatId }}</code></p> }
+                          </div>
+                        </div>
+                      }
                     </div>
                   }
                 </div>
               }
             </div>
 
-            <!-- Manager log -->
-            <div class="manager-section">
-              <div class="manager-section-header">
-                <h3><mat-icon>admin_panel_settings</mat-icon> Manager Log</h3>
-                <div class="manager-actions">
-                  <button class="tg-btn" (click)="runManagerCheck()" [disabled]="managerLoading">
-                    <mat-icon>refresh</mat-icon> Run Check Now
-                  </button>
-                  <span class="manager-status" [class.active]="managerRunning">{{ managerRunning ? 'Active' : 'Stopped' }}</span>
-                </div>
+            <!-- Live Session Log -->
+            <div class="alfred-log-section">
+              <div class="alfred-log-header">
+                <h3><mat-icon>terminal</mat-icon> Live Session</h3>
+                <span class="alfred-log-count">{{ managerLog.length }} entries</span>
+                @if (alfredAutoScroll) {
+                  <span class="alfred-live-indicator"><span class="alfred-live-dot-pulse"></span> LIVE</span>
+                }
+                <button class="alfred-scroll-btn" [class.active]="alfredAutoScroll" (click)="alfredAutoScroll = !alfredAutoScroll" matTooltip="{{ alfredAutoScroll ? 'Disable' : 'Enable' }} auto-scroll">
+                  <mat-icon>{{ alfredAutoScroll ? 'vertical_align_bottom' : 'pause' }}</mat-icon>
+                </button>
               </div>
-              @if (managerLoading) {
-                <div class="loading"><mat-spinner diameter="24"></mat-spinner></div>
-              } @else if (!managerLog.length) {
-                <div class="no-data">No log entries yet. Manager runs checks every 10 minutes.</div>
-              } @else {
-                <div class="manager-log-list">
+              <div class="alfred-log-feed" #alfredLogFeed>
+                @if (managerLoading && !managerLog.length) {
+                  <div class="loading"><mat-spinner diameter="24"></mat-spinner></div>
+                } @else if (!managerLog.length) {
+                  <div class="no-data">No log entries yet.</div>
+                } @else {
                   @for (entry of managerLog.slice().reverse(); track $index) {
                     <div class="mlog-entry" [class]="entry.type">
-                      <mat-icon class="mlog-icon">{{ entry.type === 'error' ? 'error' : entry.type === 'warning' ? 'warning' : entry.type === 'action' ? 'play_arrow' : 'info' }}</mat-icon>
+                      <mat-icon class="mlog-icon">{{ mlogIcon(entry.type) }}</mat-icon>
                       <span class="mlog-msg">{{ entry.message }}</span>
                       <span class="mlog-time">{{ formatTime(entry.timestamp) }}</span>
                     </div>
                   }
-                </div>
-              }
+                }
+              </div>
             </div>
           </div>
         }
@@ -972,6 +991,7 @@ import { marked } from 'marked';
                 } @else {
                   <button class="ctrl-btn start" (click)="restartEmployee()" matTooltip="Resume" [disabled]="!modalEmployee.taskHistory?.length"><mat-icon>play_arrow</mat-icon></button>
                 }
+                <button class="ctrl-btn" (click)="clearEmployeeSession()" matTooltip="Clear session cache"><mat-icon>cleaning_services</mat-icon></button>
                 <button class="ctrl-btn" (click)="closeModal()" matTooltip="Close"><mat-icon>close</mat-icon></button>
               </div>
             </div>
@@ -983,6 +1003,7 @@ import { marked } from 'marked';
               <button [class.active]="modalTab === 'memory'" (click)="modalTab = 'memory'; loadModalMemories()"><mat-icon>psychology</mat-icon> Memory</button>
               <button [class.active]="modalTab === 'chat'" (click)="modalTab = 'chat'"><mat-icon>chat</mat-icon> Chat</button>
               <button [class.active]="modalTab === 'skills'" (click)="modalTab = 'skills'"><mat-icon>auto_fix_high</mat-icon> Skills</button>
+              <button [class.active]="modalTab === 'debug'" (click)="modalTab = 'debug'; loadDebugConfig()"><mat-icon>bug_report</mat-icon> Debug</button>
             </div>
 
             <div class="emp-modal-body">
@@ -992,21 +1013,56 @@ import { marked } from 'marked';
                   <mat-icon class="ws-icon">info_outline</mat-icon>
                   <span class="ws-label">Working Status</span>
                   @if (modalEmployee.workingStatusAt) {
-                    <span class="ws-time">{{ modalEmployee.workingStatusAt | date:'MM/dd HH:mm' }}</span>
+                    <span class="ws-time">{{ modalEmployee.workingStatusAt | date:'MM/dd HH:mm:ss' }}</span>
                   }
+                  <button class="ws-history-btn" [class.active]="wsHistoryOpen" (click)="toggleStatusHistory()" matTooltip="Status history">
+                    <mat-icon>history</mat-icon>
+                  </button>
                 </div>
-                @if (modalEmployee.workingStatus) {
-                  @if (modalEmployee.workingStatus.length > 2000 && !wsExpanded) {
-                    <div class="ws-text" [innerHTML]="parseMarkdown(modalEmployee.workingStatus.substring(0, 2000) + '\n\n...')"></div>
-                    <button class="ws-expand" (click)="wsExpanded = true">Show more ({{ modalEmployee.workingStatus.length }} chars)</button>
-                  } @else {
-                    <div class="ws-text" [innerHTML]="parseMarkdown(modalEmployee.workingStatus)"></div>
-                    @if (modalEmployee.workingStatus.length > 2000) {
-                      <button class="ws-expand" (click)="wsExpanded = false">Show less</button>
+                @if (!wsHistoryOpen) {
+                  @if (modalEmployee.workingStatus) {
+                    @if (modalEmployee.workingStatus.length > 2000 && !wsExpanded) {
+                      <div class="ws-text" [innerHTML]="parseMarkdown(modalEmployee.workingStatus.substring(0, 2000) + '\n\n...')"></div>
+                      <button class="ws-expand" (click)="wsExpanded = true">Show more ({{ modalEmployee.workingStatus.length }} chars)</button>
+                    } @else {
+                      <div class="ws-text" [innerHTML]="parseMarkdown(modalEmployee.workingStatus)"></div>
+                      @if (modalEmployee.workingStatus.length > 2000) {
+                        <button class="ws-expand" (click)="wsExpanded = false">Show less</button>
+                      }
                     }
+                  } @else {
+                    <div class="ws-text empty-text">No status updates yet</div>
                   }
                 } @else {
-                  <div class="ws-text empty-text">No status updates yet</div>
+                  <!-- Status History -->
+                  <div class="ws-history">
+                    @if (wsHistoryLoading) {
+                      <div class="modal-loading"><mat-spinner diameter="16"></mat-spinner></div>
+                    } @else if (!wsHistory.length) {
+                      <div class="ws-history-empty">No history yet</div>
+                    } @else {
+                      @for (entry of wsHistory; track entry._id) {
+                        <div class="ws-history-entry" [class.expanded]="wsHistoryExpanded === entry._id" (click)="wsHistoryExpanded = wsHistoryExpanded === entry._id ? '' : entry._id">
+                          <div class="ws-history-header">
+                            <span class="ws-history-time">{{ entry.createdAt | date:'MM/dd HH:mm:ss' }}</span>
+                            <span class="ws-history-source">{{ entry.source }}</span>
+                            <span class="ws-history-preview">{{ entry.content.substring(0, 80) }}{{ entry.content.length > 80 ? '...' : '' }}</span>
+                            <mat-icon class="ws-history-chevron">{{ wsHistoryExpanded === entry._id ? 'expand_less' : 'expand_more' }}</mat-icon>
+                          </div>
+                          @if (wsHistoryExpanded === entry._id) {
+                            <div class="ws-history-body" [innerHTML]="parseMarkdown(entry.content)"></div>
+                          }
+                        </div>
+                      }
+                      @if (wsHistoryPages > 1) {
+                        <div class="ws-history-pagination">
+                          <button [disabled]="wsHistoryPage <= 1" (click)="loadStatusHistory(wsHistoryPage - 1)">Prev</button>
+                          <span>{{ wsHistoryPage }}/{{ wsHistoryPages }} ({{ wsHistoryTotal }})</span>
+                          <button [disabled]="wsHistoryPage >= wsHistoryPages" (click)="loadStatusHistory(wsHistoryPage + 1)">Next</button>
+                        </div>
+                      }
+                    }
+                  </div>
                 }
               </div>
               <!-- Tasks tab -->
@@ -1027,7 +1083,7 @@ import { marked } from 'marked';
                             <span class="unread-dot" matTooltip="Unread by Alfred">🔴</span>
                           }
                           <span class="modal-task-desc">{{ task.description }}</span>
-                          <span class="modal-task-time">{{ task.startedAt | date:'MM/dd HH:mm' }}</span>
+                          <span class="modal-task-time">{{ task.startedAt | date:'MM/dd HH:mm:ss' }}</span>
                         </div>
                         <div class="modal-task-output">
                           @if (task.result) {
@@ -1146,6 +1202,183 @@ import { marked } from 'marked';
                     @if (!modalEmployee.skills?.length) { <div class="modal-empty">No skills assigned</div> }
                   </div>
                   <p class="modal-hint">Manage skills in the Skills tab</p>
+                </div>
+              }
+
+              <!-- Debug tab -->
+              @if (modalTab === 'debug') {
+                <div class="modal-section debug-section">
+                  @if (debugLoading) {
+                    <div class="modal-loading"><mat-spinner diameter="20"></mat-spinner> Loading config...</div>
+                  } @else if (debugConfig) {
+                    <!-- Status banner -->
+                    <div class="debug-banner" [class.valid]="debugConfig.validation.valid" [class.invalid]="!debugConfig.validation.valid">
+                      <mat-icon>{{ debugConfig.validation.valid ? 'check_circle' : 'warning' }}</mat-icon>
+                      <span>{{ debugConfig.validation.valid ? 'Config matches reference (Influencer)' : 'Config mismatch detected' }}</span>
+                      @if (debugConfig.validation.fixed) {
+                        <span class="debug-fixed-badge">Auto-fixed</span>
+                      }
+                      <button class="debug-refresh" (click)="loadDebugConfig()" matTooltip="Refresh"><mat-icon>refresh</mat-icon></button>
+                      <button class="debug-export" (click)="exportDebugConfig()" matTooltip="Export as JSON"><mat-icon>download</mat-icon></button>
+                    </div>
+
+                    <!-- Validation issues -->
+                    @if (debugConfig.validation.issues.length) {
+                      <div class="debug-card issues">
+                        <h4><mat-icon>error_outline</mat-icon> Issues Found</h4>
+                        <ul class="debug-issues-list">
+                          @for (issue of debugConfig.validation.issues; track issue) {
+                            <li>{{ issue }}</li>
+                          }
+                        </ul>
+                      </div>
+                    }
+
+                    <!-- Session info -->
+                    <div class="debug-card">
+                      <h4><mat-icon>terminal</mat-icon> Session</h4>
+                      <div class="debug-grid">
+                        <span class="debug-label">Status</span>
+                        <span class="debug-value" [class]="debugConfig.employee.status">{{ debugConfig.employee.status }}</span>
+                        <span class="debug-label">Session alive</span>
+                        <span class="debug-value">{{ debugConfig.sessionInfo.isAlive ? 'Yes' : 'No' }}</span>
+                        <span class="debug-label">SDK Session</span>
+                        <span class="debug-value mono">{{ debugConfig.sessionInfo.sdkSessionId || '(none)' }}</span>
+                        <span class="debug-label">Active Session</span>
+                        <span class="debug-value mono">{{ debugConfig.sessionInfo.activeSessionId || '(none)' }}</span>
+                        <span class="debug-label">Project Path</span>
+                        <span class="debug-value mono">{{ debugConfig.projectPath || '(not set)' }}</span>
+                      </div>
+                    </div>
+
+                    <!-- settings.local.json -->
+                    <div class="debug-card" [class.match]="debugConfig.settingsLocal.matchesReference" [class.mismatch]="debugConfig.settingsLocal.exists && !debugConfig.settingsLocal.matchesReference">
+                      <h4>
+                        <mat-icon>{{ debugConfig.settingsLocal.matchesReference ? 'check_circle' : debugConfig.settingsLocal.exists ? 'warning' : 'cancel' }}</mat-icon>
+                        .claude/settings.local.json
+                        @if (debugConfig.settingsLocal.matchesReference) { <span class="debug-match-badge">Matches reference</span> }
+                      </h4>
+                      @if (!debugConfig.settingsLocal.exists) {
+                        <p class="debug-missing">File not found — will be created on next task execution</p>
+                      } @else {
+                        @if (debugConfig.settingsLocal.missing.length) {
+                          <div class="debug-diff">
+                            <span class="debug-diff-label missing">Missing ({{ debugConfig.settingsLocal.missing.length }}):</span>
+                            <div class="debug-diff-items">
+                              @for (perm of debugConfig.settingsLocal.missing; track perm) {
+                                <code class="debug-perm missing">- {{ perm }}</code>
+                              }
+                            </div>
+                          </div>
+                        }
+                        @if (debugConfig.settingsLocal.extra.length) {
+                          <div class="debug-diff">
+                            <span class="debug-diff-label extra">Extra ({{ debugConfig.settingsLocal.extra.length }}):</span>
+                            <div class="debug-diff-items">
+                              @for (perm of debugConfig.settingsLocal.extra; track perm) {
+                                <code class="debug-perm extra">+ {{ perm }}</code>
+                              }
+                            </div>
+                          </div>
+                        }
+                        <details class="debug-raw">
+                          <summary>Raw content</summary>
+                          <pre class="debug-json">{{ debugConfig.settingsLocal.content | json }}</pre>
+                        </details>
+                      }
+                    </div>
+
+                    <!-- ~/.claude.json trust -->
+                    <div class="debug-card" [class.match]="debugConfig.globalTrust.matchesReference" [class.mismatch]="debugConfig.globalTrust.exists && !debugConfig.globalTrust.matchesReference">
+                      <h4>
+                        <mat-icon>{{ debugConfig.globalTrust.matchesReference ? 'check_circle' : debugConfig.globalTrust.exists ? 'warning' : 'cancel' }}</mat-icon>
+                        ~/.claude.json trust entry
+                        @if (debugConfig.globalTrust.matchesReference) { <span class="debug-match-badge">Matches reference</span> }
+                      </h4>
+                      @if (!debugConfig.globalTrust.exists) {
+                        <p class="debug-missing">No trust entry for this project path</p>
+                      } @else {
+                        <div class="debug-grid">
+                          <span class="debug-label">Trust accepted</span>
+                          <span class="debug-value" [class.ok]="debugConfig.globalTrust.hasTrust" [class.bad]="!debugConfig.globalTrust.hasTrust">{{ debugConfig.globalTrust.hasTrust ? 'Yes' : 'No' }}</span>
+                          <span class="debug-label">Tools count</span>
+                          <span class="debug-value">{{ debugConfig.globalTrust.allowedTools.length }} / {{ debugConfig.reference.globalTools.length }}</span>
+                        </div>
+                        @if (debugConfig.globalTrust.missingTools.length) {
+                          <div class="debug-diff">
+                            <span class="debug-diff-label missing">Missing tools ({{ debugConfig.globalTrust.missingTools.length }}):</span>
+                            <div class="debug-diff-items">
+                              @for (tool of debugConfig.globalTrust.missingTools; track tool) {
+                                <code class="debug-perm missing">- {{ tool }}</code>
+                              }
+                            </div>
+                          </div>
+                        }
+                      }
+                    </div>
+
+                    <!-- SDK tools (what actually gets passed to query()) -->
+                    <div class="debug-card">
+                      <h4><mat-icon>build</mat-icon> SDK Tools (passed to every session)</h4>
+                      <div class="debug-tools-list">
+                        @for (tool of debugConfig.employee.sdkTools; track tool) {
+                          <code class="debug-tool">{{ tool }}</code>
+                        }
+                      </div>
+                    </div>
+
+                    <!-- Role default tools (for reference) -->
+                    <div class="debug-card">
+                      <h4><mat-icon>person</mat-icon> Role Default Tools ({{ debugConfig.employee.role }})</h4>
+                      <div class="debug-tools-list">
+                        @for (tool of debugConfig.employee.roleTools; track tool) {
+                          <code class="debug-tool">{{ tool }}</code>
+                        }
+                      </div>
+                      <p class="debug-hint" style="margin-top:6px">Role tools are for reference only — all employees now get the full SDK tool set above.</p>
+                    </div>
+
+                    <!-- Reference config -->
+                    <details class="debug-raw">
+                      <summary>Reference config (Influencer baseline)</summary>
+                      <pre class="debug-json">{{ debugConfig.reference | json }}</pre>
+                    </details>
+                  } @else {
+                    <div class="modal-empty">Failed to load debug config</div>
+                  }
+
+                  <!-- Debug interactive prompt -->
+                  <div class="debug-prompt-section">
+                    <h4><mat-icon>terminal</mat-icon> Debug Console</h4>
+                    <p class="debug-hint">Start this employee with a quick test task or ask a question to verify tool access.</p>
+                    <div class="debug-prompt-row">
+                      <input [(ngModel)]="debugPrompt" placeholder="e.g. 'List files in root dir' or 'Test writing a file'"
+                             (keydown.enter)="runDebugTask()" class="debug-prompt-input" />
+                      <button (click)="runDebugTask()" [disabled]="!debugPrompt.trim() || debugTaskRunning" class="debug-prompt-btn">
+                        @if (debugTaskRunning) {
+                          <mat-spinner diameter="16"></mat-spinner>
+                        } @else {
+                          <mat-icon>play_arrow</mat-icon>
+                        }
+                      </button>
+                      @if (debugTaskRunning) {
+                        <button (click)="stopDebugTask()" class="debug-prompt-stop" matTooltip="Stop"><mat-icon>stop</mat-icon></button>
+                      }
+                    </div>
+                    @if (debugTaskEntries.length) {
+                      <div class="debug-task-output">
+                        @for (entry of debugTaskEntries; track $index) {
+                          <div class="debug-entry" [class]="entry.type">
+                            @if (entry.tool) { <span class="tool-badge">{{ entry.tool }}</span> }
+                            <span>{{ entry.content }}</span>
+                          </div>
+                        }
+                        @if (debugTaskRunning) {
+                          <div class="debug-entry working"><mat-spinner diameter="12"></mat-spinner> Working...</div>
+                        }
+                      </div>
+                    }
+                  </div>
                 </div>
               }
             </div>
@@ -1368,6 +1601,54 @@ import { marked } from 'marked';
     }
     .ws-expand:hover { text-decoration: underline; }
 
+    /* Status history button & panel */
+    .ws-history-btn {
+      background: none; border: none; cursor: pointer; color: var(--color-text-subtle);
+      display: flex; align-items: center; padding: 2px; margin-left: 6px; border-radius: 4px;
+      transition: all 0.15s;
+    }
+    .ws-history-btn:hover { color: var(--color-primary); background: rgba(212,175,55,0.1); }
+    .ws-history-btn.active { color: var(--color-primary); background: rgba(212,175,55,0.15); }
+    .ws-history-btn mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .ws-history { display: flex; flex-direction: column; gap: 2px; max-height: 350px; overflow-y: auto; }
+    .ws-history-empty { font-size: .78rem; color: var(--color-text-subtle); font-style: italic; padding: 8px 0; }
+    .ws-history-entry {
+      border: 1px solid var(--color-border-light); border-radius: var(--radius-sm);
+      cursor: pointer; transition: all 0.15s; overflow: hidden;
+    }
+    .ws-history-entry:hover { border-color: var(--color-border); }
+    .ws-history-entry.expanded { border-color: var(--color-primary); }
+    .ws-history-header {
+      display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: .75rem;
+    }
+    .ws-history-time { color: var(--color-text-subtle); font-weight: 500; flex-shrink: 0; white-space: nowrap; }
+    .ws-history-source {
+      font-size: .62rem; padding: 1px 5px; border-radius: 4px; flex-shrink: 0;
+      background: var(--color-border-light); color: var(--color-text-subtle); text-transform: uppercase; font-weight: 600;
+    }
+    .ws-history-preview { flex: 1; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ws-history-chevron { font-size: 16px; width: 16px; height: 16px; flex-shrink: 0; color: var(--color-text-subtle); }
+    .ws-history-body {
+      padding: 8px 12px; border-top: 1px solid var(--color-border-light);
+      font-size: .78rem; background: rgba(0,0,0,0.05); max-height: 250px; overflow-y: auto;
+    }
+    .ws-history-body ::ng-deep h1, .ws-history-body ::ng-deep h2, .ws-history-body ::ng-deep h3 { margin: 0.5em 0 0.3em; font-size: 0.9em; }
+    .ws-history-body ::ng-deep ul, .ws-history-body ::ng-deep ol { margin: 0.3em 0; padding-left: 1.5em; }
+    .ws-history-body ::ng-deep code { background: rgba(0,0,0,0.15); padding: 1px 4px; border-radius: 3px; font-size: 0.85em; }
+    .ws-history-body ::ng-deep pre { background: rgba(0,0,0,0.15); padding: 8px; border-radius: 4px; overflow-x: auto; margin: 0.3em 0; }
+    .ws-history-body ::ng-deep table { border-collapse: collapse; width: 100%; font-size: .78rem; margin: 0.3em 0; }
+    .ws-history-body ::ng-deep th, .ws-history-body ::ng-deep td { border: 1px solid var(--color-border-light); padding: 4px 8px; text-align: left; }
+    .ws-history-body ::ng-deep p { margin: 0.3em 0; }
+    .ws-history-pagination {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 6px 0; font-size: .72rem; color: var(--color-text-subtle);
+    }
+    .ws-history-pagination button {
+      background: var(--color-border-light); border: none; border-radius: 4px;
+      padding: 3px 10px; font-size: .72rem; cursor: pointer; color: var(--color-text);
+    }
+    .ws-history-pagination button:disabled { opacity: 0.3; cursor: not-allowed; }
+
     .emp-modal-tabs {
       display: flex; border-bottom: 1px solid var(--color-border-light);
       padding: 0 16px; background: rgba(0,0,0,0.08);
@@ -1452,6 +1733,138 @@ import { marked } from 'marked';
     .modal-skill-item { padding: 8px 12px; border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); }
     .modal-skill-name { font-size: .82rem; font-weight: 700; color: var(--color-primary); }
     .modal-skill-desc { display: block; font-size: .75rem; color: var(--color-text-subtle); margin-top: 2px; }
+
+    /* Debug tab */
+    .debug-section { display: flex; flex-direction: column; gap: 10px; }
+    .debug-banner {
+      display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: var(--radius-sm);
+      font-size: .82rem; font-weight: 600;
+    }
+    .debug-banner.valid { background: #22c55e15; color: #22c55e; border: 1px solid #22c55e40; }
+    .debug-banner.invalid { background: #ef444415; color: #ef4444; border: 1px solid #ef444440; }
+    .debug-fixed-badge {
+      font-size: .68rem; padding: 2px 8px; border-radius: 8px;
+      background: #f59e0b20; color: #f59e0b; font-weight: 700; margin-left: 4px;
+    }
+    .debug-refresh {
+      margin-left: auto; background: none; border: none; cursor: pointer;
+      color: inherit; display: flex; padding: 2px;
+    }
+    .debug-refresh mat-icon, .debug-export mat-icon { font-size: 18px; width: 18px; height: 18px; }
+    .debug-export {
+      background: none; border: none; cursor: pointer;
+      color: inherit; display: flex; padding: 2px;
+    }
+    .debug-card {
+      background: var(--color-bg); border: 1px solid var(--color-border-light);
+      border-radius: var(--radius-sm); padding: 12px 14px;
+    }
+    .debug-card.match { border-color: #22c55e40; }
+    .debug-card.mismatch { border-color: #ef444440; }
+    .debug-card.issues { background: #ef444408; border-color: #ef444440; }
+    .debug-card h4 {
+      display: flex; align-items: center; gap: 6px; margin: 0 0 8px 0;
+      font-size: .82rem; color: var(--color-text);
+    }
+    .debug-card h4 mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .debug-card.match h4 mat-icon { color: #22c55e; }
+    .debug-card.mismatch h4 mat-icon { color: #ef4444; }
+    .debug-card.issues h4 mat-icon { color: #ef4444; }
+    .debug-match-badge {
+      font-size: .65rem; padding: 1px 6px; border-radius: 6px;
+      background: #22c55e15; color: #22c55e; font-weight: 600; margin-left: 4px;
+    }
+    .debug-issues-list {
+      list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px;
+    }
+    .debug-issues-list li {
+      font-size: .78rem; color: #ef4444; padding: 4px 8px;
+      background: #ef444408; border-radius: 4px;
+    }
+    .debug-grid {
+      display: grid; grid-template-columns: 120px 1fr; gap: 4px 12px; font-size: .78rem;
+    }
+    .debug-label { color: var(--color-text-subtle); font-weight: 500; }
+    .debug-value { color: var(--color-text); }
+    .debug-value.mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: .72rem; word-break: break-all; }
+    .debug-value.working { color: #22c55e; }
+    .debug-value.idle { color: var(--color-text-subtle); }
+    .debug-value.ok { color: #22c55e; }
+    .debug-value.bad { color: #ef4444; }
+    .debug-missing { font-size: .78rem; color: var(--color-text-subtle); font-style: italic; }
+    .debug-diff { margin-top: 6px; }
+    .debug-diff-label { font-size: .72rem; font-weight: 600; display: block; margin-bottom: 4px; }
+    .debug-diff-label.missing { color: #ef4444; }
+    .debug-diff-label.extra { color: #3b82f6; }
+    .debug-diff-items { display: flex; flex-wrap: wrap; gap: 4px; }
+    .debug-perm {
+      font-size: .68rem; font-family: 'SF Mono', 'Fira Code', monospace;
+      padding: 2px 6px; border-radius: 4px;
+    }
+    .debug-perm.missing { background: #ef444412; color: #ef4444; }
+    .debug-perm.extra { background: #3b82f612; color: #3b82f6; }
+    .debug-tools-list { display: flex; flex-wrap: wrap; gap: 4px; }
+    .debug-tool {
+      font-size: .68rem; font-family: 'SF Mono', 'Fira Code', monospace;
+      padding: 2px 6px; border-radius: 4px; background: var(--color-border-light); color: var(--color-text);
+    }
+    .debug-raw {
+      margin-top: 8px; font-size: .72rem; color: var(--color-text-subtle);
+    }
+    .debug-raw summary {
+      cursor: pointer; font-weight: 500; padding: 4px 0;
+    }
+    .debug-json {
+      max-height: 300px; overflow: auto; font-size: .68rem;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      background: var(--color-bg); padding: 8px; border-radius: 4px;
+      border: 1px solid var(--color-border-light); white-space: pre-wrap; word-break: break-word;
+    }
+    .debug-prompt-section {
+      margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--color-border-light);
+    }
+    .debug-prompt-section h4 {
+      display: flex; align-items: center; gap: 6px; margin: 0 0 4px;
+      font-size: .82rem; color: var(--color-text);
+    }
+    .debug-prompt-section h4 mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .debug-hint { font-size: .72rem; color: var(--color-text-subtle); margin: 0 0 8px; }
+    .debug-prompt-row { display: flex; gap: 6px; align-items: center; }
+    .debug-prompt-input {
+      flex: 1; padding: 8px 12px; border: 1px solid var(--color-border-light);
+      border-radius: var(--radius-sm); background: var(--color-bg);
+      color: var(--color-text); font-size: .82rem; font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+    .debug-prompt-input:focus { outline: none; border-color: var(--color-primary); }
+    .debug-prompt-btn, .debug-prompt-stop {
+      width: 36px; height: 36px; border-radius: var(--radius-sm);
+      display: flex; align-items: center; justify-content: center;
+      border: none; cursor: pointer; flex-shrink: 0;
+    }
+    .debug-prompt-btn {
+      background: var(--color-primary); color: #000;
+    }
+    .debug-prompt-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .debug-prompt-stop { background: #ef4444; color: #fff; }
+    .debug-task-output {
+      margin-top: 8px; max-height: 350px; overflow-y: auto;
+      background: #0a0a0a; border: 1px solid var(--color-border-light);
+      border-radius: var(--radius-sm); padding: 8px; font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+    .debug-entry {
+      font-size: .72rem; padding: 3px 6px; border-radius: 3px; margin-bottom: 2px;
+      display: flex; align-items: flex-start; gap: 6px; word-break: break-word;
+    }
+    .debug-entry.text { color: #e2e8f0; }
+    .debug-entry.tool_use { color: #60a5fa; }
+    .debug-entry.tool_result { color: #94a3b8; font-size: .68rem; }
+    .debug-entry.error { color: #ef4444; }
+    .debug-entry.working { color: #22c55e; display: flex; align-items: center; gap: 6px; }
+    .debug-entry .tool-badge {
+      font-size: .62rem; padding: 1px 5px; border-radius: 3px;
+      background: #60a5fa20; color: #60a5fa; font-weight: 600; flex-shrink: 0;
+    }
+
     .mini-status { flex-shrink: 0; }
     .mini-dot { width: 8px; height: 8px; border-radius: 50%; display: block; background: var(--color-border); }
     .mini-status.working .mini-dot { background: #22c55e; }
@@ -1886,36 +2299,83 @@ import { marked } from 'marked';
 
     /* Manager tab */
     .manager-panel { display: flex; flex-direction: column; gap: 12px; }
-    .manager-section {
-      background: var(--color-bg-card); border: 1px solid var(--color-border-light);
-      border-radius: var(--radius-md); padding: 16px;
-    }
-    .manager-section h3 {
-      display: flex; align-items: center; gap: 6px; margin: 0 0 10px;
-      font-size: 0.95rem; font-weight: 700; color: var(--color-text);
-    }
-    .manager-section h3 mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--color-primary); }
-    .manager-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-    .manager-section-header h3 { margin: 0; }
-    .manager-actions { display: flex; align-items: center; gap: 8px; }
-    .manager-status { font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 100px; background: var(--color-border-light); color: var(--color-text-subtle); }
-    .manager-status.active { background: #22c55e15; color: #22c55e; }
     .manager-live-dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; display: inline-block; margin-left: 4px; }
     .no-data { text-align: center; padding: 2rem; font-size: 0.82rem; color: var(--color-text-subtle); }
 
-    /* Manager log */
-    .manager-log-list { max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+    /* Alfred profile card */
+    .alfred-card {
+      background: var(--color-bg-card); border: 1px solid var(--color-border-light);
+      border-radius: var(--radius-md); padding: 16px;
+    }
+    .alfred-header {
+      display: flex; align-items: center; gap: 12px;
+    }
+    .alfred-avatar { font-size: 2.4rem; flex-shrink: 0; }
+    .alfred-info { flex: 1; }
+    .alfred-name { margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--color-text); }
+    .alfred-title { font-size: .78rem; color: var(--color-text-subtle); }
+    .alfred-status-group { flex-shrink: 0; }
+    .alfred-status-badge {
+      display: flex; align-items: center; gap: 6px;
+      font-size: .72rem; font-weight: 700; padding: 4px 12px; border-radius: 100px;
+    }
+    .alfred-status-badge.active { background: #22c55e15; color: #22c55e; }
+    .alfred-status-badge.stopped { background: var(--color-border-light); color: var(--color-text-subtle); }
+    .alfred-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-border); }
+    .alfred-controls { display: flex; gap: 4px; flex-shrink: 0; }
+    .alfred-telegram {
+      margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border-light);
+    }
+
+    /* Alfred log section */
+    .alfred-log-section {
+      background: var(--color-bg-card); border: 1px solid var(--color-border-light);
+      border-radius: var(--radius-md); display: flex; flex-direction: column;
+    }
+    .alfred-log-header {
+      display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+      border-bottom: 1px solid var(--color-border-light);
+    }
+    .alfred-log-header h3 {
+      display: flex; align-items: center; gap: 6px; margin: 0;
+      font-size: .9rem; font-weight: 700; color: var(--color-text);
+    }
+    .alfred-log-header h3 mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--color-primary); }
+    .alfred-log-count { font-size: .7rem; color: var(--color-text-subtle); margin-left: auto; }
+    .alfred-live-indicator {
+      display: flex; align-items: center; gap: 4px;
+      font-size: .62rem; font-weight: 700; color: #22c55e; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .alfred-live-dot-pulse {
+      width: 6px; height: 6px; border-radius: 50%; background: #22c55e;
+      animation: alfred-pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes alfred-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .alfred-scroll-btn {
+      background: none; border: none; cursor: pointer; color: var(--color-text-subtle);
+      display: flex; padding: 2px; border-radius: 4px;
+    }
+    .alfred-scroll-btn:hover { color: var(--color-primary); }
+    .alfred-scroll-btn.active { color: #22c55e; }
+    .alfred-scroll-btn mat-icon { font-size: 18px; width: 18px; height: 18px; }
+    .alfred-log-feed {
+      max-height: 500px; overflow-y: auto; padding: 8px; display: flex;
+      flex-direction: column; gap: 2px;
+    }
+
+    /* Manager log entries (shared) */
     .mlog-entry {
       display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px;
-      border-radius: var(--radius-sm); font-size: 0.8rem;
+      border-radius: var(--radius-sm); font-size: 0.78rem;
     }
     .mlog-entry.info { color: var(--color-text); }
     .mlog-entry.warning { background: #f59e0b08; color: #f59e0b; }
     .mlog-entry.error { background: #ef444408; color: #ef4444; }
     .mlog-entry.action { color: #3b82f6; }
+    .mlog-entry.ai { color: #a78bfa; }
     .mlog-icon { font-size: 16px; width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; }
-    .mlog-msg { flex: 1; line-height: 1.4; }
-    .mlog-time { font-size: 0.68rem; color: var(--color-text-subtle); flex-shrink: 0; white-space: nowrap; }
+    .mlog-msg { flex: 1; line-height: 1.4; word-break: break-word; }
+    .mlog-time { font-size: 0.66rem; color: var(--color-text-subtle); flex-shrink: 0; white-space: nowrap; }
 
     /* Skills Configuration */
     .skills-config { padding: 0.5rem 0; }
@@ -2053,6 +2513,8 @@ import { marked } from 'marked';
   `],
 })
 export class HrComponent implements OnInit, OnDestroy {
+  @ViewChild('alfredLogFeed') alfredLogFeed?: ElementRef<HTMLDivElement>;
+
   loading = true;
   projects: Project[] = [];
   selectedProjectId = '';
@@ -2124,7 +2586,7 @@ export class HrComponent implements OnInit, OnDestroy {
 
   // Modal
   modalEmployee: Employee | null = null;
-  modalTab: 'tasks' | 'logs' | 'memory' | 'chat' | 'skills' = 'tasks';
+  modalTab: 'tasks' | 'logs' | 'memory' | 'chat' | 'skills' | 'debug' = 'tasks';
   modalTaskInput = '';
   modalLogs: any[] = [];
   modalLogsLoading = false;
@@ -2138,6 +2600,21 @@ export class HrComponent implements OnInit, OnDestroy {
   modalChatInput = '';
   modalChatSending = false;
   wsExpanded = false;
+  wsHistoryOpen = false;
+  wsHistory: StatusHistoryEntry[] = [];
+  wsHistoryLoading = false;
+  wsHistoryExpanded = '';
+  wsHistoryPage = 1;
+  wsHistoryPages = 1;
+  wsHistoryTotal = 0;
+
+  // Debug
+  debugConfig: DebugConfigResponse | null = null;
+  debugLoading = false;
+  debugPrompt = '';
+  debugTaskRunning = false;
+  debugTaskEntries: { type: string; content: string; tool?: string }[] = [];
+  private debugSub: Subscription | null = null;
 
   // Detail tabs
   detailTab: 'task' | 'chat' | 'memory' = 'task';
@@ -2155,10 +2632,12 @@ export class HrComponent implements OnInit, OnDestroy {
   newMemCategory = 'learning';
   newMemContent = '';
 
-  // Manager
+  // Manager / Alfred
   managerRunning = false;
   managerLog: { timestamp: string; type: string; message: string }[] = [];
   managerLoading = false;
+  alfredShowTelegram = false;
+  alfredAutoScroll = true;
 
   // Telegram
   telegramStatus: any = null;
@@ -2229,6 +2708,16 @@ export class HrComponent implements OnInit, OnDestroy {
         if (this.modalEmployee?._id === ev.employeeId && this.modalTab === 'logs') {
           this.modalLogs.unshift({ _id: Date.now().toString(), ...ev, createdAt: ev.timestamp });
         }
+      }),
+      this.wsService.onManagerLog().subscribe((ev) => {
+        this.managerLog.push(ev);
+        if (this.managerLog.length > 200) this.managerLog.shift();
+        if (this.alfredAutoScroll && this.activeTab === 'manager') {
+          setTimeout(() => this.scrollAlfredLog(), 50);
+        }
+      }),
+      this.wsService.onManagerStatus().subscribe((ev) => {
+        this.managerRunning = ev.running;
       }),
     );
   }
@@ -2591,7 +3080,7 @@ export class HrComponent implements OnInit, OnDestroy {
     if (diff < 60000) return 'just now';
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-    return d.toLocaleDateString();
+    return d.toLocaleString();
   }
 
   // Skills config
@@ -2665,6 +3154,7 @@ export class HrComponent implements OnInit, OnDestroy {
         this.managerRunning = res.running;
         this.managerLog = res.log;
         this.managerLoading = false;
+        if (this.alfredAutoScroll) setTimeout(() => this.scrollAlfredLog(), 100);
       },
       error: () => { this.managerLoading = false; },
     });
@@ -2685,6 +3175,16 @@ export class HrComponent implements OnInit, OnDestroy {
       },
       error: () => { this.managerLoading = false; },
     });
+  }
+
+  mlogIcon(type: string): string {
+    const map: Record<string, string> = { error: 'error', warning: 'warning', action: 'play_arrow', ai: 'psychology', info: 'info' };
+    return map[type] || 'info';
+  }
+
+  scrollAlfredLog(): void {
+    const el = this.alfredLogFeed?.nativeElement;
+    if (el) el.scrollTop = 0;
   }
 
   setupTelegram(): void {
@@ -2825,14 +3325,57 @@ export class HrComponent implements OnInit, OnDestroy {
     this.modalMemories = [];
     this.modalTaskInput = '';
     this.wsExpanded = false;
+    this.wsHistoryOpen = false;
+    this.wsHistory = [];
     this.employeeService.getById(emp._id!).subscribe({
       next: (fresh) => { this.modalEmployee = fresh; this.selectedEmployee = fresh; },
       error: () => { this.modalEmployee = emp; },
     });
   }
 
+  clearEmployeeSession(): void {
+    if (!this.modalEmployee) return;
+    if (!confirm(`Clear session cache for ${this.modalEmployee.name}? This resets their SDK session — next task creates a fresh one.`)) return;
+    this.employeeService.clearSession(this.modalEmployee._id!).subscribe({
+      next: (res) => {
+        this.snackBar.open(res.message, 'Close', { duration: 3000 });
+        if (this.modalEmployee) {
+          this.modalEmployee.status = 'idle';
+        }
+      },
+      error: (err) => this.snackBar.open(err.error?.error || 'Failed', 'Close', { duration: 3000 }),
+    });
+  }
+
   closeModal(): void {
     this.modalEmployee = null;
+    this.wsHistoryOpen = false;
+    this.wsHistory = [];
+  }
+
+  toggleStatusHistory(): void {
+    this.wsHistoryOpen = !this.wsHistoryOpen;
+    if (this.wsHistoryOpen && this.modalEmployee) {
+      this.loadStatusHistory(1);
+    }
+  }
+
+  loadStatusHistory(page = 1): void {
+    if (!this.modalEmployee) return;
+    this.wsHistoryLoading = true;
+    this.wsHistoryPage = page;
+    this.employeeService.getStatusHistory(this.modalEmployee._id!, page, 20).subscribe({
+      next: (res) => {
+        this.wsHistory = res.entries;
+        this.wsHistoryPages = res.pages;
+        this.wsHistoryTotal = res.total;
+        this.wsHistoryLoading = false;
+      },
+      error: () => {
+        this.wsHistoryLoading = false;
+        this.snackBar.open('Failed to load status history', 'Close', { duration: 3000 });
+      },
+    });
   }
 
   loadModalLogs(): void {
@@ -2908,6 +3451,94 @@ export class HrComponent implements OnInit, OnDestroy {
       },
       error: (err) => this.snackBar.open(err.error?.error || 'Failed', 'Close', { duration: 3000 }),
     });
+  }
+
+  // ── Debug ──
+
+  loadDebugConfig(): void {
+    if (!this.modalEmployee) return;
+    this.debugLoading = true;
+    this.debugConfig = null;
+    this.employeeService.getDebugConfig(this.modalEmployee._id!).subscribe({
+      next: (config) => { this.debugConfig = config; this.debugLoading = false; },
+      error: (err) => {
+        this.debugLoading = false;
+        this.snackBar.open(err.error?.error || 'Failed to load debug config', 'Close', { duration: 3000 });
+      },
+    });
+  }
+
+  runDebugTask(): void {
+    if (!this.modalEmployee || !this.debugPrompt.trim()) return;
+    const prompt = this.debugPrompt.trim();
+    this.debugTaskEntries = [];
+    this.debugTaskRunning = true;
+    this.debugSub?.unsubscribe();
+    this.debugSub = this.employeeService.assignTask(this.modalEmployee._id!, `[DEBUG] ${prompt}`).subscribe({
+      next: (event: any) => {
+        if (event.type === 'text' && event.content) {
+          this.debugTaskEntries.push({ type: 'text', content: event.content });
+        } else if (event.type === 'tool_use') {
+          this.debugTaskEntries.push({ type: 'tool_use', content: event.content || '', tool: event.tool });
+        } else if (event.type === 'tool_result') {
+          this.debugTaskEntries.push({ type: 'tool_result', content: (event.content || '').substring(0, 500) });
+        } else if (event.type === 'error') {
+          this.debugTaskEntries.push({ type: 'error', content: event.content || 'Unknown error' });
+        }
+      },
+      complete: () => {
+        this.debugTaskRunning = false;
+        // Refresh config after task finishes
+        this.loadDebugConfig();
+        // Refresh employee status
+        if (this.modalEmployee) {
+          this.employeeService.getById(this.modalEmployee._id!).subscribe({
+            next: (fresh) => { this.modalEmployee = fresh; this.selectedEmployee = fresh; },
+          });
+        }
+      },
+      error: (err) => {
+        this.debugTaskRunning = false;
+        this.debugTaskEntries.push({ type: 'error', content: err.message || 'Task failed' });
+      },
+    });
+  }
+
+  stopDebugTask(): void {
+    if (!this.modalEmployee) return;
+    this.debugSub?.unsubscribe();
+    this.employeeService.stopTask(this.modalEmployee._id!).subscribe({
+      next: () => {
+        this.debugTaskRunning = false;
+        this.debugTaskEntries.push({ type: 'text', content: 'Task stopped' });
+      },
+    });
+  }
+
+  exportDebugConfig(): void {
+    if (!this.debugConfig || !this.modalEmployee) return;
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      employee: {
+        id: this.modalEmployee._id,
+        ...this.debugConfig.employee,
+      },
+      projectPath: this.debugConfig.projectPath,
+      settingsLocal: this.debugConfig.settingsLocal,
+      globalTrust: this.debugConfig.globalTrust,
+      reference: this.debugConfig.reference,
+      validation: this.debugConfig.validation,
+      sessionInfo: this.debugConfig.sessionInfo,
+    };
+    const json = JSON.stringify(payload, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const status = this.debugConfig.validation.valid ? 'OK' : 'MISMATCH';
+    a.download = `debug-${this.modalEmployee.name.replace(/\s+/g, '-')}-${status}-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   getLatestTask(emp: Employee): any {

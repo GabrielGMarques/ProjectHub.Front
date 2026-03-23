@@ -157,8 +157,20 @@ export class EmployeeService {
     return this.http.post<{ message: string }>(`${this.apiUrl}/${employeeId}/restart`, {});
   }
 
+  clearSession(employeeId: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.apiUrl}/${employeeId}/clear-session`, {});
+  }
+
   getWorkingStatus(employeeId: string): Observable<{ workingStatus: string; workingStatusAt: string }> {
     return this.http.get<{ workingStatus: string; workingStatusAt: string }>(`${this.apiUrl}/${employeeId}`);
+  }
+
+  getDebugConfig(employeeId: string): Observable<DebugConfigResponse> {
+    return this.http.get<DebugConfigResponse>(`${this.apiUrl}/${employeeId}/debug-config`);
+  }
+
+  getStatusHistory(employeeId: string, page = 1, limit = 50): Observable<StatusHistoryResponse> {
+    return this.http.get<StatusHistoryResponse>(`${this.apiUrl}/${employeeId}/status-history?page=${page}&limit=${limit}`);
   }
 }
 
@@ -176,6 +188,32 @@ export interface EmployeeLogEntry {
 
 export interface EmployeeLogsResponse {
   logs: EmployeeLogEntry[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
+export interface DebugConfigResponse {
+  employee: { name: string; role: string; status: string; roleTools: string[]; sdkTools: string[] };
+  projectPath: string;
+  settingsLocal: { exists: boolean; content: any; matchesReference: boolean; missing: string[]; extra: string[] };
+  globalTrust: { exists: boolean; hasTrust: boolean; allowedTools: string[]; matchesReference: boolean; missingTools: string[] };
+  reference: { settingsLocal: any; globalTools: string[] };
+  validation: { valid: boolean; issues: string[]; fixed: boolean };
+  sessionInfo: { sdkSessionId: string; activeSessionId: string; isAlive: boolean };
+}
+
+export interface StatusHistoryEntry {
+  _id: string;
+  content: string;
+  source: 'api' | 'file' | 'manager';
+  taskId?: string;
+  createdAt: string;
+}
+
+export interface StatusHistoryResponse {
+  entries: StatusHistoryEntry[];
   total: number;
   page: number;
   limit: number;

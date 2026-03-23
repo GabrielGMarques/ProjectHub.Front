@@ -30,6 +30,17 @@ export interface WSEmployeeLog {
   timestamp: string;
 }
 
+export interface WSManagerLog {
+  type: string;
+  message: string;
+  timestamp: string;
+}
+
+export interface WSManagerStatus {
+  running: boolean;
+  timestamp: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class WebSocketService implements OnDestroy {
   private socket: Socket | null = null;
@@ -38,6 +49,8 @@ export class WebSocketService implements OnDestroy {
   private taskUpdate$ = new Subject<WSTaskUpdate>();
   private taskNew$ = new Subject<WSTaskUpdate>();
   private employeeLog$ = new Subject<WSEmployeeLog>();
+  private managerLog$ = new Subject<WSManagerLog>();
+  private managerStatus$ = new Subject<WSManagerStatus>();
 
   connect(): void {
     if (this.socket?.connected) return;
@@ -52,6 +65,8 @@ export class WebSocketService implements OnDestroy {
     this.socket.on('employee:task_update', (data: WSTaskUpdate) => this.taskUpdate$.next(data));
     this.socket.on('employee:task_new', (data: WSTaskUpdate) => this.taskNew$.next(data));
     this.socket.on('employee:log', (data: WSEmployeeLog) => this.employeeLog$.next(data));
+    this.socket.on('manager:log', (data: WSManagerLog) => this.managerLog$.next(data));
+    this.socket.on('manager:status', (data: WSManagerStatus) => this.managerStatus$.next(data));
   }
 
   disconnect(): void {
@@ -63,6 +78,8 @@ export class WebSocketService implements OnDestroy {
   onTaskUpdate(): Observable<WSTaskUpdate> { return this.taskUpdate$.asObservable(); }
   onTaskNew(): Observable<WSTaskUpdate> { return this.taskNew$.asObservable(); }
   onEmployeeLog(): Observable<WSEmployeeLog> { return this.employeeLog$.asObservable(); }
+  onManagerLog(): Observable<WSManagerLog> { return this.managerLog$.asObservable(); }
+  onManagerStatus(): Observable<WSManagerStatus> { return this.managerStatus$.asObservable(); }
 
   ngOnDestroy(): void {
     this.disconnect();

@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { TelemetryService, TelemetryStats, TelemetryEventItem, ExecutionLog, ExecutionLogGroup, ManagerLogItem, ManagerLogsResponse, EmployeeLogItem, EmployeeLogsResponse, EmployeeLogEmployee } from '../../services/telemetry.service';
+import { TelemetryService, TelemetryStats, TelemetryEventItem, ExecutionLog, ExecutionLogGroup, ManagerLogItem, ManagerLogsResponse, EmployeeLogItem, EmployeeLogsResponse, EmployeeLogEmployee, TokenUsageStats, TokenUsageRecord } from '../../services/telemetry.service';
 
 @Component({
   selector: 'app-telemetry',
@@ -129,6 +129,12 @@ import { TelemetryService, TelemetryStats, TelemetryEventItem, ExecutionLog, Exe
           </button>
           <button class="log-tab" [class.active]="logTab === 'errors'" (click)="loadErrors(); logTab = 'errors'">
             <mat-icon>error</mat-icon> Errors ({{ stats.errorCount }})
+          </button>
+          <button class="log-tab" [class.active]="logTab === 'tokens'" (click)="loadTokenUsage(); logTab = 'tokens'">
+            <mat-icon>paid</mat-icon> Token Usage
+            @if (tokenStats && tokenStats.totalCostUsd > 0) {
+              <span class="tab-badge token-cost">\${{ tokenStats.totalCostUsd.toFixed(2) }}</span>
+            }
           </button>
         </div>
 
@@ -399,6 +405,132 @@ import { TelemetryService, TelemetryStats, TelemetryEventItem, ExecutionLog, Exe
             </div>
           }
         }
+
+        @if (logTab === 'tokens') {
+          @if (tokenLoading) {
+            <div class="loading"><mat-spinner diameter="24"></mat-spinner></div>
+          } @else if (tokenStats) {
+            <!-- Token stats cards -->
+            <div class="stats-row token-stats">
+              <div class="stat-card">
+                <span class="stat-value">{{ formatTokenCount(tokenStats.totalTokens) }}</span>
+                <span class="stat-label">Total Tokens</span>
+              </div>
+              <div class="stat-card cost">
+                <span class="stat-value">\${{ tokenStats.totalCostUsd.toFixed(2) }}</span>
+                <span class="stat-label">Total Cost</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value">{{ tokenStats.totalCalls }}</span>
+                <span class="stat-label">API Calls</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value">{{ formatTokenCount(tokenStats.avgTokensPerCall) }}</span>
+                <span class="stat-label">Avg Tokens/Call</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value">{{ formatTokenCount(tokenStats.inputTokens) }}</span>
+                <span class="stat-label">Input Tokens</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value">{{ formatTokenCount(tokenStats.outputTokens) }}</span>
+                <span class="stat-label">Output Tokens</span>
+              </div>
+            </div>
+
+            <!-- Token daily chart + by source -->
+            <div class="charts-row">
+              <div class="chart-card">
+                <h3>Daily Token Usage</h3>
+                <div class="bar-chart">
+                  @for (day of tokenStats.dailyBreakdown; track day.date) {
+                    <div class="bar-col" [matTooltip]="day.date + ': ' + formatTokenCount(day.tokens) + ' tokens, $' + day.cost.toFixed(3)">
+                      <div class="bar-stack">
+                        @if (day.tokens > 0) {
+                          <div class="bar-segment token-bar" [style.height.px]="tokenBarHeight(day.tokens)"></div>
+                        }
+                      </div>
+                      <span class="bar-label">{{ day.date.slice(5) }}</span>
+                    </div>
+                  }
+                </div>
+              </div>
+
+              <div class="chart-card">
+                <h3>By Source</h3>
+                @if (tokenStats.bySource.length === 0) {
+                  <p class="no-data">No data yet</p>
+                } @else {
+                  <div class="source-list">
+                    @for (s of tokenStats.bySource; track s.source) {
+                      <div class="source-row">
+                        <span class="source-name">{{ s.source }}</span>
+                        <div class="source-bar-track">
+                          <div class="source-bar-fill token-fill" [style.width.%]="tokenSourcePercent(s.tokens)"></div>
+                        </div>
+                        <span class="source-count" [matTooltip]="'$' + s.cost.toFixed(3) + ' | ' + s.calls + ' calls'">{{ formatTokenCount(s.tokens) }}</span>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            </div>
+
+            <!-- By employee -->
+            @if (tokenStats.byEmployee.length > 0) {
+              <div class="chart-card token-emp-card">
+                <h3>By Employee</h3>
+                <div class="token-emp-list">
+                  @for (emp of tokenStats.byEmployee; track emp.employeeId) {
+                    <div class="token-emp-row">
+                      <span class="token-emp-avatar">{{ emp.avatar }}</span>
+                      <span class="token-emp-name">{{ emp.name }}</span>
+                      <span class="token-emp-role">{{ emp.role }}</span>
+                      <div class="source-bar-track">
+                        <div class="source-bar-fill token-fill" [style.width.%]="tokenEmpPercent(emp.tokens)"></div>
+                      </div>
+                      <span class="token-emp-tokens">{{ formatTokenCount(emp.tokens) }}</span>
+                      <span class="token-emp-cost">\${{ emp.cost.toFixed(3) }}</span>
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+
+            <!-- Recent usage records -->
+            <h3 class="section-title">Recent API Calls</h3>
+            <div class="event-list">
+              @for (r of tokenRecords; track r._id) {
+                <div class="event-row token-row">
+                  <mat-icon class="event-icon token-icon">paid</mat-icon>
+                  <div class="event-main">
+                    <div class="event-top">
+                      <span class="event-source">{{ r.source }}</span>
+                      <span class="token-model-badge">{{ r.aiModel }}</span>
+                      @if (r.employeeId) {
+                        <span class="event-emp">{{ r.employeeId.avatar }} {{ r.employeeId.name }}</span>
+                      }
+                      @if (r.projectId) {
+                        <span class="event-project">{{ r.projectId.name }}</span>
+                      }
+                    </div>
+                    <span class="event-desc">{{ formatTokenCount(r.inputTokens) }} in / {{ formatTokenCount(r.outputTokens) }} out / {{ formatTokenCount(r.cacheReadTokens) }} cache</span>
+                  </div>
+                  <div class="event-meta">
+                    <span class="token-cost-badge">\${{ r.costUsd.toFixed(4) }}</span>
+                    @if (r.durationMs) {
+                      <span class="event-duration">{{ formatDuration(r.durationMs) }}</span>
+                    }
+                    <span class="event-time">{{ formatTime(r.createdAt) }}</span>
+                  </div>
+                </div>
+              }
+              @if (tokenRecords.length === 0) {
+                <div class="no-data">No token usage recorded yet. Usage is tracked automatically from all AI calls.</div>
+              }
+            </div>
+          }
+        }
       }
     </div>
   `,
@@ -643,6 +775,25 @@ import { TelemetryService, TelemetryStats, TelemetryEventItem, ExecutionLog, Exe
     .emp-log-cat[data-cat="task_fail"] { background: rgba(239,68,68,0.1); color: #ef4444; }
     .emp-log-cat[data-cat="tool_use"] { background: rgba(212,175,55,0.1); color: var(--color-primary); }
     .emp-log-cat[data-cat="error"] { background: rgba(239,68,68,0.1); color: #ef4444; }
+
+    /* Token usage */
+    .tab-badge.token-cost { background: rgba(168,85,247,0.15); color: #a78bfa; }
+    .stat-card.cost .stat-value { color: #a78bfa; }
+    .bar-segment.token-bar { background: #a78bfa; }
+    .source-bar-fill.token-fill { background: #a78bfa; }
+    .token-emp-card { margin-bottom: 1rem; }
+    .token-emp-list { display: flex; flex-direction: column; gap: 8px; }
+    .token-emp-row { display: flex; align-items: center; gap: 8px; }
+    .token-emp-avatar { font-size: 1.1rem; }
+    .token-emp-name { font-size: 0.82rem; font-weight: 700; color: var(--color-text); width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .token-emp-role { font-size: 0.68rem; color: var(--color-text-subtle); width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .token-emp-tokens { font-size: 0.75rem; font-weight: 700; color: var(--color-text); width: 50px; text-align: right; }
+    .token-emp-cost { font-size: 0.72rem; font-weight: 600; color: #a78bfa; width: 55px; text-align: right; }
+    .section-title { font-size: 0.9rem; font-weight: 700; color: var(--color-text); margin: 1rem 0 0.5rem; }
+    .token-row { border-left-color: #a78bfa; }
+    .token-icon { color: #a78bfa; }
+    .token-model-badge { font-size: 0.6rem; font-weight: 700; padding: 1px 6px; border-radius: 100px; background: rgba(168,85,247,0.1); color: #a78bfa; }
+    .token-cost-badge { font-size: 0.72rem; font-weight: 700; color: #a78bfa; }
   `],
 })
 export class TelemetryComponent implements OnInit {
@@ -651,7 +802,7 @@ export class TelemetryComponent implements OnInit {
   stats: TelemetryStats | null = null;
   events: TelemetryEventItem[] = [];
   errors: TelemetryEventItem[] = [];
-  logTab: 'runs' | 'errors' | 'execlog' | 'gordon' | 'employees' = 'execlog';
+  logTab: 'runs' | 'errors' | 'execlog' | 'gordon' | 'employees' | 'tokens' = 'execlog';
   execLog: ExecutionLog | null = null;
   execLogLoading = false;
   execLogHours = 48;
@@ -666,7 +817,11 @@ export class TelemetryComponent implements OnInit {
   empLoading = false;
   empFilterEmployee = '';
   empFilterCategory = '';
+  tokenStats: TokenUsageStats | null = null;
+  tokenRecords: TokenUsageRecord[] = [];
+  tokenLoading = false;
   private maxDaily = 1;
+  private maxDailyTokens = 1;
 
   constructor(private telemetryService: TelemetryService) {}
 
@@ -810,6 +965,44 @@ export class TelemetryComponent implements OnInit {
     if (ms < 1000) return `${ms}ms`;
     if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
     return `${(ms / 60000).toFixed(1)}m`;
+  }
+
+  // Token usage methods
+  loadTokenUsage(): void {
+    this.tokenLoading = true;
+    this.telemetryService.getTokenUsage(this.days).subscribe({
+      next: (stats) => {
+        this.tokenStats = stats;
+        this.maxDailyTokens = Math.max(1, ...stats.dailyBreakdown.map(d => d.tokens));
+        this.tokenLoading = false;
+      },
+      error: () => { this.tokenLoading = false; },
+    });
+    this.telemetryService.getRecentTokenUsage(50).subscribe({
+      next: (records) => this.tokenRecords = records,
+    });
+  }
+
+  formatTokenCount(n: number): string {
+    if (!n) return '0';
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+    return n.toString();
+  }
+
+  tokenBarHeight(value: number): number {
+    return Math.max(2, (value / this.maxDailyTokens) * 100);
+  }
+
+  tokenSourcePercent(tokens: number): number {
+    if (!this.tokenStats?.totalTokens) return 0;
+    return (tokens / this.tokenStats.totalTokens) * 100;
+  }
+
+  tokenEmpPercent(tokens: number): number {
+    if (!this.tokenStats?.byEmployee?.length) return 0;
+    const max = this.tokenStats.byEmployee[0].tokens;
+    return max > 0 ? (tokens / max) * 100 : 0;
   }
 
   formatTime(dateStr: string): string {
