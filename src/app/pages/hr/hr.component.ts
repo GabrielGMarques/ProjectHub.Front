@@ -13,6 +13,9 @@ import { ProjectService } from '../../services/project.service';
 import { WebSocketService, WSEmployeeStatus, WSTaskUpdate, WSEmployeeLog } from '../../services/websocket.service';
 import { Employee, EmployeeSkill, RoleTemplate, CommFile } from '../../models/employee.model';
 import { Project } from '../../models/project.model';
+import { TelemetryService } from '../../services/telemetry.service';
+import { ActivatedRoute } from '@angular/router';
+import { SettingsService, ModelRoutingConfig, CostEstimate, ModelTier, ActionRoute } from '../../services/settings.service';
 import { environment } from '../../../environments/environment';
 import { marked } from 'marked';
 
@@ -50,6 +53,9 @@ import { marked } from 'marked';
           <button class="hr-tab" [class.active]="activeTab === 'manager'" (click)="loadManagerLog(); activeTab = 'manager'">
             <mat-icon>admin_panel_settings</mat-icon> Manager
             @if (managerRunning) { <span class="manager-live-dot"></span> }
+          </button>
+          <button class="hr-tab" [class.active]="activeTab === 'models'" (click)="loadModelRouting(); activeTab = 'models'">
+            <mat-icon>tune</mat-icon> AI Models
           </button>
         </div>
 
@@ -964,6 +970,156 @@ import { marked } from 'marked';
           </div>
         }
 
+        @if (activeTab === 'models') {
+          <div class="models-panel">
+            @if (modelsLoading) {
+              <div class="modal-loading"><mat-spinner diameter="24"></mat-spinner> Loading model config...</div>
+            } @else if (modelConfig) {
+              <!-- Global Default -->
+              <div class="models-section">
+                <h3><mat-icon>public</mat-icon> Global Default</h3>
+                <div class="model-toggle-row">
+                  <span class="model-label">Fallback model for all unspecified roles/actions</span>
+                  <div class="model-toggle">
+                    @for (m of ['haiku', 'sonnet', 'opus']; track m) {
+                      <button class="model-btn" [class.active]="modelConfig.globalDefault === m"
+                              [class.haiku]="m === 'haiku'" [class.sonnet]="m === 'sonnet'" [class.opus]="m === 'opus'"
+                              (click)="setGlobalDefault(m)">{{ m[0].toUpperCase() }}</button>
+                    }
+                  </div>
+                </div>
+              </div>
+
+              <!-- Action Routes -->
+              @for (cat of [['employee', 'Employee Actions'], ['alfred', 'Alfred Actions'], ['strategic', 'Strategic']]; track cat[0]) {
+                <div class="models-section">
+                  <h3><mat-icon>{{ cat[0] === 'employee' ? 'engineering' : cat[0] === 'alfred' ? 'smart_toy' : 'flag' }}</mat-icon> {{ cat[1] }}</h3>
+                  @for (route of getActionsByCategory(cat[0]); track route.action) {
+                    <div class="model-toggle-row">
+                      <span class="model-label">{{ route.label }}</span>
+                      <div class="model-toggle">
+                        @for (m of ['haiku', 'sonnet', 'opus']; track m) {
+                          <button class="model-btn" [class.active]="route.model === m"
+                                  [class.haiku]="m === 'haiku'" [class.sonnet]="m === 'sonnet'" [class.opus]="m === 'opus'"
+                                  (click)="setActionModel(route.action, m)">{{ m[0].toUpperCase() }}</button>
+                        }
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+
+              <!-- Role Defaults -->
+              <div class="models-section">
+                <h3><mat-icon>badge</mat-icon> Role Defaults</h3>
+                @for (rd of modelConfig.roleDefaults; track rd.role) {
+                  <div class="model-toggle-row">
+                    <span class="model-label">{{ rd.role }}</span>
+                    <div class="model-toggle">
+                      @for (m of ['haiku', 'sonnet', 'opus']; track m) {
+                        <button class="model-btn" [class.active]="rd.model === m"
+                                [class.haiku]="m === 'haiku'" [class.sonnet]="m === 'sonnet'" [class.opus]="m === 'opus'"
+                                (click)="setRoleModel(rd.role, m)">{{ m[0].toUpperCase() }}</button>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+
+              <!-- Sub-Agent Delegation -->
+              <div class="models-section">
+                <h3><mat-icon>account_tree</mat-icon> Sub-Agent Delegation</h3>
+                <div class="model-toggle-row">
+                  <span class="model-label">File exploration (Glob/Grep/Read)</span>
+                  <div class="model-toggle">
+                    @for (m of ['haiku', 'sonnet']; track m) {
+                      <button class="model-btn" [class.active]="modelConfig.subAgentDefaults.exploration === m"
+                              [class.haiku]="m === 'haiku'" [class.sonnet]="m === 'sonnet'"
+                              (click)="setSubAgent('exploration', m)">{{ m[0].toUpperCase() }}</button>
+                    }
+                  </div>
+                </div>
+                <div class="model-toggle-row">
+                  <span class="model-label">Code implementation</span>
+                  <div class="model-toggle">
+                    @for (m of ['sonnet', 'opus']; track m) {
+                      <button class="model-btn" [class.active]="modelConfig.subAgentDefaults.implementation === m"
+                              [class.sonnet]="m === 'sonnet'" [class.opus]="m === 'opus'"
+                              (click)="setSubAgent('implementation', m)">{{ m[0].toUpperCase() }}</button>
+                    }
+                  </div>
+                </div>
+                <div class="model-toggle-row">
+                  <span class="model-label">Running commands (bash)</span>
+                  <div class="model-toggle">
+                    @for (m of ['haiku', 'sonnet']; track m) {
+                      <button class="model-btn" [class.active]="modelConfig.subAgentDefaults.commands === m"
+                              [class.haiku]="m === 'haiku'" [class.sonnet]="m === 'sonnet'"
+                              (click)="setSubAgent('commands', m)">{{ m[0].toUpperCase() }}</button>
+                    }
+                  </div>
+                </div>
+                <div class="model-toggle-row">
+                  <span class="model-label">Test execution</span>
+                  <div class="model-toggle">
+                    @for (m of ['sonnet', 'opus']; track m) {
+                      <button class="model-btn" [class.active]="modelConfig.subAgentDefaults.testing === m"
+                              [class.sonnet]="m === 'sonnet'" [class.opus]="m === 'opus'"
+                              (click)="setSubAgent('testing', m)">{{ m[0].toUpperCase() }}</button>
+                    }
+                  </div>
+                </div>
+              </div>
+
+              <!-- Escalation -->
+              <div class="models-section">
+                <h3><mat-icon>trending_up</mat-icon> Self-Escalation</h3>
+                <div class="model-toggle-row">
+                  <label class="model-label">
+                    <input type="checkbox" [checked]="modelConfig.escalation.enabled"
+                           (change)="setEscalation({ enabled: !modelConfig.escalation.enabled })"> Allow agents to request model upgrade
+                  </label>
+                </div>
+                @if (modelConfig.escalation.enabled) {
+                  <div class="model-toggle-row">
+                    <span class="model-label">Maximum escalation level</span>
+                    <div class="model-toggle">
+                      @for (m of ['sonnet', 'opus']; track m) {
+                        <button class="model-btn" [class.active]="modelConfig.escalation.maxEscalation === m"
+                                [class.sonnet]="m === 'sonnet'" [class.opus]="m === 'opus'"
+                                (click)="setEscalation({ maxEscalation: m })">{{ m[0].toUpperCase() }}</button>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+
+              <!-- Cost Estimate -->
+              @if (costEstimate) {
+                <div class="models-section cost-estimate">
+                  <h3><mat-icon>savings</mat-icon> Cost Estimate (last 7 days)</h3>
+                  <div class="cost-grid">
+                    <div class="cost-stat">
+                      <span class="cost-stat-value">{{'$'}}{{ costEstimate.currentConfig.daily.toFixed(2) }}/day</span>
+                      <span class="cost-stat-label">Current Config</span>
+                    </div>
+                    <div class="cost-stat">
+                      <span class="cost-stat-value">{{'$'}}{{ costEstimate.allSonnetBaseline.daily.toFixed(2) }}/day</span>
+                      <span class="cost-stat-label">All-Sonnet Baseline</span>
+                    </div>
+                    <div class="cost-stat" [class.savings]="costEstimate.savingsPercent > 0" [class.over]="costEstimate.savingsPercent < 0">
+                      <span class="cost-stat-value">{{ costEstimate.savingsPercent > 0 ? '-' : '+' }}{{ costEstimate.savingsPercent > 0 ? costEstimate.savingsPercent : -costEstimate.savingsPercent }}%</span>
+                      <span class="cost-stat-label">{{ costEstimate.savingsPercent > 0 ? 'Savings' : 'Premium' }}</span>
+                    </div>
+                  </div>
+                </div>
+              }
+
+              <button class="reset-btn" (click)="resetModelConfig()"><mat-icon>restart_alt</mat-icon> Reset to Defaults</button>
+            }
+          </div>
+        }
+
         @if (!selectedProjectId && (activeTab === 'team' || activeTab === 'hire' || activeTab === 'comms')) {
           <div class="empty-state">
             <mat-icon>business</mat-icon>
@@ -1003,6 +1159,7 @@ import { marked } from 'marked';
               <button [class.active]="modalTab === 'memory'" (click)="modalTab = 'memory'; loadModalMemories()"><mat-icon>psychology</mat-icon> Memory</button>
               <button [class.active]="modalTab === 'chat'" (click)="modalTab = 'chat'"><mat-icon>chat</mat-icon> Chat</button>
               <button [class.active]="modalTab === 'skills'" (click)="modalTab = 'skills'"><mat-icon>auto_fix_high</mat-icon> Skills</button>
+              <button [class.active]="modalTab === 'costs'" (click)="modalTab = 'costs'; loadEmployeeCosts()"><mat-icon>paid</mat-icon> Costs</button>
               <button [class.active]="modalTab === 'debug'" (click)="modalTab = 'debug'; loadDebugConfig()"><mat-icon>bug_report</mat-icon> Debug</button>
             </div>
 
@@ -1083,6 +1240,11 @@ import { marked } from 'marked';
                             <span class="unread-dot" matTooltip="Unread by Alfred">🔴</span>
                           }
                           <span class="modal-task-desc">{{ task.description }}</span>
+                          @if (getTaskCost(task.taskId); as tc) {
+                            <span class="modal-task-cost" matTooltip="{{ formatTokenCount(tc.tokens) }} tokens, {{ tc.calls }} API call(s)">
+                              {{'$'}}{{ tc.cost.toFixed(4) }}
+                            </span>
+                          }
                           <span class="modal-task-time">{{ task.startedAt | date:'MM/dd HH:mm:ss' }}</span>
                         </div>
                         <div class="modal-task-output">
@@ -1202,6 +1364,120 @@ import { marked } from 'marked';
                     @if (!modalEmployee.skills?.length) { <div class="modal-empty">No skills assigned</div> }
                   </div>
                   <p class="modal-hint">Manage skills in the Skills tab</p>
+                </div>
+              }
+
+              <!-- Costs tab -->
+              @if (modalTab === 'costs') {
+                <div class="modal-section costs-section">
+                  @if (costsLoading) {
+                    <div class="modal-loading"><mat-spinner diameter="20"></mat-spinner> Loading costs...</div>
+                  } @else if (employeeCosts) {
+                    <div class="costs-summary">
+                      <div class="cost-card">
+                        <span class="cost-value">{{ formatTokenCount(employeeCosts.summary.totalTokens) }}</span>
+                        <span class="cost-label">Total Tokens</span>
+                      </div>
+                      <div class="cost-card">
+                        <span class="cost-value">{{'$'}}{{ employeeCosts.summary.totalCost.toFixed(4) }}</span>
+                        <span class="cost-label">Total Cost</span>
+                      </div>
+                      <div class="cost-card">
+                        <span class="cost-value">{{ employeeCosts.summary.totalCalls }}</span>
+                        <span class="cost-label">API Calls</span>
+                      </div>
+                      <div class="cost-card">
+                        <span class="cost-value">{{ formatTokenCount(employeeCosts.summary.inputTokens) }}</span>
+                        <span class="cost-label">Input</span>
+                      </div>
+                      <div class="cost-card">
+                        <span class="cost-value">{{ formatTokenCount(employeeCosts.summary.outputTokens) }}</span>
+                        <span class="cost-label">Output</span>
+                      </div>
+                      <div class="cost-card">
+                        <span class="cost-value">{{ formatTokenCount(employeeCosts.summary.cacheReadTokens) }}</span>
+                        <span class="cost-label">Cache Read</span>
+                      </div>
+                    </div>
+                    <div class="costs-records">
+                      <h4>Execution Log</h4>
+                      @for (group of costsByTask; track group.taskId) {
+                        <div class="cost-task-group">
+                          <div class="cost-task-header" (click)="group._expanded = !group._expanded">
+                            <div class="cost-task-left">
+                              <mat-icon class="cost-expand-icon">{{ group._expanded ? 'expand_less' : 'expand_more' }}</mat-icon>
+                              <span class="cost-task-desc">{{ group.taskDescription || 'Unknown task' }}</span>
+                            </div>
+                            <div class="cost-task-right">
+                              <span class="cost-task-calls">{{ group.turnCount || group.segments.length }} interaction{{ (group.turnCount || group.segments.length) !== 1 ? 's' : '' }}</span>
+                              <span class="cost-task-tokens">{{ formatTokenCount(group.totalTokens) }}</span>
+                              @if (group.totalCost) {
+                                <span class="cost-task-amount">{{'$'}}{{ group.totalCost.toFixed(4) }}</span>
+                              }
+                              <span class="cost-task-time">{{ group.firstAt | date:'MM/dd HH:mm' }}</span>
+                            </div>
+                          </div>
+                          @if (group._expanded) {
+                            <div class="cost-task-details">
+                              <!-- Per-turn breakdown (individual AI actions) -->
+                              @if (group.turns.length) {
+                                @for (r of group.turns; track r._id) {
+                                  <div class="cost-row turn-row">
+                                    <div class="cost-row-main">
+                                      @if (r.metadata?.tools?.length) {
+                                        @for (tool of r.metadata.tools; track tool) {
+                                          <span class="cost-tool-badge">{{ tool }}</span>
+                                        }
+                                      } @else {
+                                        <span class="cost-tool-badge text-only">text</span>
+                                      }
+                                      <span class="cost-tokens">{{ formatTokenCount(r.inputTokens) }} in / {{ formatTokenCount(r.outputTokens) }} out</span>
+                                      @if (r.cacheReadTokens) {
+                                        <span class="cost-cache">{{ formatTokenCount(r.cacheReadTokens) }} cache</span>
+                                      }
+                                      @if (r._estimatedCost) {
+                                        <span class="cost-amount cost-est" matTooltip="Estimated from segment total">~{{'$'}}{{ r._estimatedCost.toFixed(4) }}</span>
+                                      }
+                                    </div>
+                                    <div class="cost-row-meta">
+                                      <span class="cost-time">{{ r.createdAt | date:'HH:mm:ss' }}</span>
+                                    </div>
+                                  </div>
+                                }
+                              }
+                              <!-- Segment summaries (totals with actual cost) -->
+                              @for (r of group.segments; track r._id) {
+                                <div class="cost-row segment-row">
+                                  <div class="cost-row-main">
+                                    <span class="cost-segment-label">Segment total</span>
+                                    <span class="cost-model">{{ r.aiModel || 'sdk' }}</span>
+                                    <span class="cost-tokens">{{ formatTokenCount(r.inputTokens) }} in / {{ formatTokenCount(r.outputTokens) }} out</span>
+                                    @if (r.cacheReadTokens) {
+                                      <span class="cost-cache">{{ formatTokenCount(r.cacheReadTokens) }} cache</span>
+                                    }
+                                    <span class="cost-amount">{{'$'}}{{ (r.costUsd || 0).toFixed(4) }}</span>
+                                    <span class="cost-turns">{{ r.numTurns || 0 }} turns</span>
+                                  </div>
+                                  <div class="cost-row-meta">
+                                    @if (r.projectId?.name) {
+                                      <span class="cost-project">{{ r.projectId.name }}</span>
+                                    }
+                                    <span class="cost-time">{{ r.createdAt | date:'MM/dd HH:mm:ss' }}</span>
+                                    @if (r.durationMs) {
+                                      <span class="cost-duration">{{ (r.durationMs / 1000).toFixed(0) }}s</span>
+                                    }
+                                  </div>
+                                </div>
+                              }
+                            </div>
+                          }
+                        </div>
+                      }
+                      @if (employeeCosts.records.length === 0) {
+                        <div class="costs-empty">No token usage recorded yet.</div>
+                      }
+                    </div>
+                  }
                 </div>
               }
 
@@ -1697,6 +1973,11 @@ import { marked } from 'marked';
     .modal-task-top { display: flex; align-items: flex-start; gap: 8px; }
     .modal-task-icon { flex-shrink: 0; }
     .modal-task-desc { flex: 1; font-size: .82rem; color: var(--color-text); line-height: 1.4; }
+    .modal-task-cost {
+      flex-shrink: 0; font-size: .68rem; font-weight: 700; color: #22c55e;
+      padding: 1px 8px; border-radius: 100px; background: rgba(34,197,94,.1);
+      white-space: nowrap; cursor: default;
+    }
     .modal-task-time { font-size: .68rem; color: var(--color-text-subtle); flex-shrink: 0; white-space: nowrap; }
     .modal-task-output { margin-top: 8px; }
     .modal-task-pre {
@@ -1733,6 +2014,100 @@ import { marked } from 'marked';
     .modal-skill-item { padding: 8px 12px; border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); }
     .modal-skill-name { font-size: .82rem; font-weight: 700; color: var(--color-primary); }
     .modal-skill-desc { display: block; font-size: .75rem; color: var(--color-text-subtle); margin-top: 2px; }
+
+    /* AI Models tab */
+    .models-panel { max-width: 700px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; padding-bottom: 2rem; }
+    .models-section { background: var(--color-bg-card); border-radius: var(--radius-sm); border: 1px solid var(--color-border-light); padding: 14px 16px; }
+    .models-section h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: .9rem; font-weight: 700; color: var(--color-text); }
+    .models-section h3 mat-icon { font-size: 20px; width: 20px; height: 20px; color: var(--color-primary); }
+    .model-toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--color-border-light); }
+    .model-toggle-row:last-child { border-bottom: none; }
+    .model-label { font-size: .8rem; color: var(--color-text); flex: 1; }
+    .model-label input[type="checkbox"] { margin-right: 8px; }
+    .model-toggle { display: flex; gap: 4px; }
+    .model-btn {
+      width: 32px; height: 28px; border: 1px solid var(--color-border-light); border-radius: 4px;
+      background: var(--color-bg); color: var(--color-text-subtle); cursor: pointer;
+      font-size: .7rem; font-weight: 700; transition: all .15s;
+    }
+    .model-btn:hover { border-color: var(--color-text-subtle); }
+    .model-btn.active.haiku { background: #22c55e; color: #fff; border-color: #22c55e; }
+    .model-btn.active.sonnet { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+    .model-btn.active.opus { background: #8b5cf6; color: #fff; border-color: #8b5cf6; }
+    .cost-estimate { }
+    .cost-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .cost-stat { text-align: center; padding: 8px; background: var(--color-bg-elevated); border-radius: var(--radius-sm); }
+    .cost-stat-value { display: block; font-size: 1rem; font-weight: 700; color: var(--color-text); }
+    .cost-stat-label { display: block; font-size: .65rem; color: var(--color-text-subtle); margin-top: 2px; text-transform: uppercase; }
+    .cost-stat.savings .cost-stat-value { color: #22c55e; }
+    .cost-stat.over .cost-stat-value { color: #ef4444; }
+    .reset-btn {
+      display: flex; align-items: center; gap: 6px; margin: 0 auto; padding: 8px 16px;
+      background: var(--color-bg-elevated); border: 1px solid var(--color-border-light); border-radius: var(--radius-sm);
+      color: var(--color-text-subtle); cursor: pointer; font-size: .8rem; transition: all .15s;
+    }
+    .reset-btn:hover { border-color: #ef4444; color: #ef4444; }
+    .reset-btn mat-icon { font-size: 18px; width: 18px; height: 18px; }
+
+    /* Costs tab */
+    .costs-section { display: flex; flex-direction: column; gap: 12px; }
+    .costs-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .cost-card {
+      display: flex; flex-direction: column; align-items: center; padding: 10px 8px;
+      background: var(--color-bg-elevated); border-radius: var(--radius-sm); border: 1px solid var(--color-border-light);
+    }
+    .cost-value { font-size: 1.1rem; font-weight: 700; color: var(--color-primary); }
+    .cost-label { font-size: .65rem; color: var(--color-text-subtle); margin-top: 2px; text-transform: uppercase; letter-spacing: .5px; }
+    .costs-records h4 { margin: 0 0 8px; font-size: .85rem; font-weight: 600; color: var(--color-text); }
+    .cost-task-group {
+      border: 1px solid var(--color-border-light); border-radius: var(--radius-sm);
+      margin-bottom: 8px; background: var(--color-bg-elevated); overflow: hidden;
+    }
+    .cost-task-header {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 10px 12px; cursor: pointer; transition: background .15s;
+    }
+    .cost-task-header:hover { background: rgba(212,175,55,.04); }
+    .cost-task-left { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
+    .cost-expand-icon { font-size: 18px; width: 18px; height: 18px; color: var(--color-text-subtle); flex-shrink: 0; }
+    .cost-task-desc {
+      font-size: .78rem; font-weight: 600; color: var(--color-text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .cost-task-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; font-size: .72rem; }
+    .cost-task-calls { color: var(--color-text-subtle); }
+    .cost-task-tokens { color: var(--color-text); font-weight: 500; }
+    .cost-task-amount { color: #22c55e; font-weight: 700; }
+    .cost-task-time { color: var(--color-text-subtle); }
+    .cost-task-details { border-top: 1px solid var(--color-border-light); padding: 6px 8px 8px; }
+    .cost-row {
+      padding: 6px 8px; border-radius: var(--radius-sm); border: 1px solid var(--color-border-light);
+      margin-bottom: 4px; background: var(--color-bg-card);
+    }
+    .cost-row-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .78rem; }
+    .cost-model {
+      background: var(--color-primary); color: #fff; padding: 1px 6px; border-radius: 4px;
+      font-size: .65rem; font-weight: 600; text-transform: uppercase;
+    }
+    .cost-tokens { color: var(--color-text); font-weight: 500; }
+    .cost-cache { color: var(--color-text-subtle); font-size: .72rem; }
+    .cost-amount { color: #22c55e; font-weight: 700; margin-left: auto; }
+    .cost-turns { color: var(--color-text-subtle); font-size: .7rem; }
+    .cost-row-meta { display: flex; gap: 10px; margin-top: 3px; font-size: .68rem; color: var(--color-text-subtle); }
+    .cost-project { font-weight: 500; }
+    .turn-row { border-left: 2px solid rgba(96,165,250,.4); }
+    .segment-row { border-left: 2px solid var(--color-primary); background: rgba(212,175,55,.04); }
+    .cost-segment-label {
+      font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+      color: var(--color-primary); padding: 1px 6px; border-radius: 4px; background: rgba(212,175,55,.1);
+    }
+    .cost-tool-badge {
+      font-size: .62rem; font-weight: 600; padding: 1px 6px; border-radius: 4px;
+      background: rgba(96,165,250,.12); color: #60a5fa; white-space: nowrap;
+    }
+    .cost-tool-badge.text-only { background: rgba(255,255,255,.06); color: var(--color-text-subtle); }
+    .cost-est { opacity: .7; font-style: italic; }
+    .costs-empty { text-align: center; color: var(--color-text-subtle); padding: 20px; font-size: .85rem; }
 
     /* Debug tab */
     .debug-section { display: flex; flex-direction: column; gap: 10px; }
@@ -2518,7 +2893,7 @@ export class HrComponent implements OnInit, OnDestroy {
   loading = true;
   projects: Project[] = [];
   selectedProjectId = '';
-  activeTab: 'overview' | 'team' | 'hire' | 'comms' | 'skills' | 'manager' = 'overview';
+  activeTab: 'overview' | 'team' | 'hire' | 'comms' | 'skills' | 'manager' | 'models' = 'overview';
 
   // Overview
   allEmployees: Employee[] = [];
@@ -2578,6 +2953,56 @@ export class HrComponent implements OnInit, OnDestroy {
     return this.availableSkills.filter(s => !q || s.name.includes(q) || s.description.toLowerCase().includes(q));
   }
 
+  // Costs
+  costsLoading = false;
+  employeeCosts: { records: any[]; summary: { totalTokens: number; totalCost: number; totalCalls: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number } } | null = null;
+
+  get costsByTask(): { taskId: string; taskDescription: string; turns: any[]; segments: any[]; totalTokens: number; totalCost: number; turnCount: number; firstAt: string; _expanded?: boolean }[] {
+    if (!this.employeeCosts?.records?.length) return [];
+    const map = new Map<string, { taskId: string; taskDescription: string; turns: any[]; segments: any[]; totalTokens: number; totalCost: number; turnCount: number; firstAt: string; _expanded?: boolean }>();
+    // Reverse so we process oldest first (records come sorted newest first)
+    for (const r of [...this.employeeCosts.records].reverse()) {
+      const taskId = r.metadata?.taskId || r.createdAt || 'unknown';
+      const isTurn = r.metadata?.turn === true;
+      const existing = map.get(taskId);
+      if (existing) {
+        if (isTurn) {
+          existing.turns.push(r);
+          existing.turnCount++;
+        } else {
+          existing.segments.push(r);
+        }
+        existing.totalTokens += r.totalTokens || 0;
+        existing.totalCost += r.costUsd || 0;
+      } else {
+        map.set(taskId, {
+          taskId,
+          taskDescription: r.metadata?.taskDescription || r.metadata?.employeeRole || 'Task',
+          turns: isTurn ? [r] : [],
+          segments: isTurn ? [] : [r],
+          totalTokens: r.totalTokens || 0,
+          totalCost: r.costUsd || 0,
+          turnCount: isTurn ? 1 : 0,
+          firstAt: r.createdAt,
+        });
+      }
+    }
+    // Distribute segment cost across turns proportionally by output tokens
+    for (const group of map.values()) {
+      if (group.segments.length && group.turns.length) {
+        const segmentCost = group.segments.reduce((s: number, r: any) => s + (r.costUsd || 0), 0);
+        const totalTurnOutput = group.turns.reduce((s: number, r: any) => s + (r.outputTokens || 0), 0);
+        if (totalTurnOutput > 0 && segmentCost > 0) {
+          for (const t of group.turns) {
+            t._estimatedCost = segmentCost * ((t.outputTokens || 0) / totalTurnOutput);
+          }
+        }
+      }
+    }
+    // Return newest task first
+    return Array.from(map.values()).reverse();
+  }
+
   // Cycle
   cyclePhases: ('idle' | 'pending_directions' | 'active' | 'dev' | 'qa' | 'done')[] = ['idle', 'pending_directions', 'active', 'dev', 'qa', 'done'];
   expandedCycleAdvice = '';
@@ -2586,7 +3011,7 @@ export class HrComponent implements OnInit, OnDestroy {
 
   // Modal
   modalEmployee: Employee | null = null;
-  modalTab: 'tasks' | 'logs' | 'memory' | 'chat' | 'skills' | 'debug' = 'tasks';
+  modalTab: 'tasks' | 'logs' | 'memory' | 'chat' | 'skills' | 'costs' | 'debug' = 'tasks';
   modalTaskInput = '';
   modalLogs: any[] = [];
   modalLogsLoading = false;
@@ -2655,6 +3080,9 @@ export class HrComponent implements OnInit, OnDestroy {
     private http: HttpClient,
     private snackBar: MatSnackBar,
     private sanitizer: DomSanitizer,
+    private telemetryService: TelemetryService,
+    private route: ActivatedRoute,
+    private settingsService: SettingsService,
   ) {}
 
   ngOnInit(): void {
@@ -2757,6 +3185,19 @@ export class HrComponent implements OnInit, OnDestroy {
           }
         }
         this.loading = false;
+        // Handle deep-link from telemetry: ?employee=ID&tab=costs
+        this.route.queryParams.subscribe(params => {
+          if (params['employee']) {
+            const emp = this.allEmployees.find(e => e._id === params['employee']);
+            if (emp) {
+              this.openEmployeeModal(emp, emp.projectId);
+              if (params['tab'] === 'costs') {
+                this.modalTab = 'costs';
+                this.loadEmployeeCosts();
+              }
+            }
+          }
+        });
       },
       error: () => { this.loading = false; },
     });
@@ -3331,6 +3772,12 @@ export class HrComponent implements OnInit, OnDestroy {
       next: (fresh) => { this.modalEmployee = fresh; this.selectedEmployee = fresh; },
       error: () => { this.modalEmployee = emp; },
     });
+    // Preload costs so task history can show cost per execution
+    this.employeeCosts = null;
+    this.telemetryService.getEmployeeTokenUsage(emp._id!).subscribe({
+      next: (data) => { this.employeeCosts = data; },
+      error: () => {},
+    });
   }
 
   clearEmployeeSession(): void {
@@ -3623,5 +4070,94 @@ export class HrComponent implements OnInit, OnDestroy {
       },
       error: () => this.snackBar.open('Failed to save', 'Close', { duration: 3000 }),
     });
+  }
+
+  // ── AI Models tab ──
+  modelsLoading = false;
+  modelConfig: ModelRoutingConfig | null = null;
+  costEstimate: CostEstimate | null = null;
+
+  loadModelRouting(): void {
+    this.modelsLoading = true;
+    this.settingsService.getModelRouting().subscribe({
+      next: (config) => { this.modelConfig = config; this.modelsLoading = false; },
+      error: () => { this.modelsLoading = false; },
+    });
+    this.settingsService.getCostEstimate().subscribe({
+      next: (est) => this.costEstimate = est,
+    });
+  }
+
+  getActionsByCategory(category: string): ActionRoute[] {
+    return (this.modelConfig?.actionRoutes || []).filter(r => r.category === category);
+  }
+
+  setGlobalDefault(model: string): void {
+    this.settingsService.updateGlobalDefault(model as ModelTier).subscribe({
+      next: (config) => this.modelConfig = config,
+    });
+  }
+
+  setActionModel(action: string, model: string): void {
+    this.settingsService.updateActionRoute(action, model as ModelTier).subscribe({
+      next: (config) => this.modelConfig = config,
+    });
+  }
+
+  setRoleModel(role: string, model: string): void {
+    this.settingsService.updateRoleDefault(role, model as ModelTier).subscribe({
+      next: (config) => this.modelConfig = config,
+    });
+  }
+
+  setSubAgent(field: string, model: string): void {
+    this.settingsService.updateSubAgentDefaults({ [field]: model }).subscribe({
+      next: (config) => this.modelConfig = config,
+    });
+  }
+
+  setEscalation(update: { enabled?: boolean; maxEscalation?: string }): void {
+    this.settingsService.updateEscalation(update as any).subscribe({
+      next: (config) => this.modelConfig = config,
+    });
+  }
+
+  resetModelConfig(): void {
+    if (!confirm('Reset all model routing to factory defaults?')) return;
+    this.settingsService.resetToDefaults().subscribe({
+      next: (config) => {
+        this.modelConfig = config;
+        this.snackBar.open('Model config reset to defaults', 'Close', { duration: 2000 });
+      },
+    });
+  }
+
+  loadEmployeeCosts(): void {
+    if (!this.modalEmployee?._id) return;
+    this.costsLoading = true;
+    this.employeeCosts = null;
+    this.telemetryService.getEmployeeTokenUsage(this.modalEmployee._id).subscribe({
+      next: (data) => { this.employeeCosts = data; this.costsLoading = false; },
+      error: () => { this.costsLoading = false; },
+    });
+  }
+
+  getTaskCost(taskId: string): { cost: number; tokens: number; calls: number } | null {
+    if (!this.employeeCosts?.records?.length) return null;
+    let cost = 0, tokens = 0, calls = 0;
+    for (const r of this.employeeCosts.records) {
+      if (r.metadata?.taskId === taskId) {
+        cost += r.costUsd || 0;
+        tokens += r.totalTokens || 0;
+        calls++;
+      }
+    }
+    return calls > 0 ? { cost, tokens, calls } : null;
+  }
+
+  formatTokenCount(n: number): string {
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+    return n.toString();
   }
 }

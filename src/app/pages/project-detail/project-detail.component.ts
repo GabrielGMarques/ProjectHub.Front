@@ -20,6 +20,8 @@ import { AgentTerminalComponent } from '../../components/agent-terminal/agent-te
 import { SkillsPanelComponent } from '../../components/skills-panel/skills-panel.component';
 import { FileExplorerComponent } from '../../components/file-explorer/file-explorer.component';
 import { EmployeeService } from '../../services/employee.service';
+import { AuthService } from '../../services/auth.service';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-project-detail',
@@ -364,6 +366,28 @@ import { EmployeeService } from '../../services/employee.service';
                       </div>
                     }
                   </div>
+                  <!-- Screenshot gallery -->
+                  @if (appScreenshots[app.name]?.length) {
+                    <div class="app-screenshots">
+                      <div class="screenshots-header">
+                        <mat-icon>photo_library</mat-icon>
+                        <span>{{ appScreenshots[app.name].length }} screenshot{{ appScreenshots[app.name].length !== 1 ? 's' : '' }}</span>
+                      </div>
+                      <div class="screenshots-track">
+                        @for (ss of appScreenshots[app.name]; track ss.filename; let i = $index) {
+                          <div class="screenshot-thumb"
+                               (click)="openLightbox(app, ss, i)"
+                               [matTooltip]="ss.caption || ss.originalName">
+                            <img [src]="getScreenshotUrl(app.name, ss.filename)" [alt]="ss.caption" loading="lazy" />
+                            @if (ss.caption) {
+                              <span class="thumb-caption">{{ ss.caption }}</span>
+                            }
+                          </div>
+                        }
+                      </div>
+                    </div>
+                  }
+
                   <div class="app-card-actions">
                     <button class="app-action-btn" (click)="toggleAppStatus(app)" matTooltip="{{ app.status === 'running' ? 'Stop' : 'Start' }}">
                       <mat-icon>{{ app.status === 'running' ? 'stop' : 'play_arrow' }}</mat-icon>
@@ -385,6 +409,24 @@ import { EmployeeService } from '../../services/employee.service';
                 </div>
               }
             </div>
+
+            <!-- Screenshot lightbox -->
+            @if (lightboxUrl) {
+              <div class="lightbox-overlay" (click)="lightboxUrl = ''">
+                @if (lightboxScreenshots.length > 1 && lightboxIndex > 0) {
+                  <button class="lightbox-nav lb-prev" (click)="navigateLightbox(-1, $event)"><mat-icon>chevron_left</mat-icon></button>
+                }
+                <img [src]="lightboxUrl" (click)="$event.stopPropagation()" />
+                @if (lightboxScreenshots.length > 1 && lightboxIndex < lightboxScreenshots.length - 1) {
+                  <button class="lightbox-nav lb-next" (click)="navigateLightbox(1, $event)"><mat-icon>chevron_right</mat-icon></button>
+                }
+                <span class="lightbox-caption">{{ lightboxCaption }}</span>
+                @if (lightboxScreenshots.length > 1) {
+                  <span class="lightbox-counter">{{ lightboxIndex + 1 }} / {{ lightboxScreenshots.length }}</span>
+                }
+                <button class="lightbox-close" (click)="lightboxUrl = ''"><mat-icon>close</mat-icon></button>
+              </div>
+            }
 
             <!-- Gateway info -->
             <div class="gateway-info">
@@ -1165,6 +1207,52 @@ import { EmployeeService } from '../../services/employee.service';
     .app-action-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
     .app-action-btn.danger:hover { border-color: #f85149; color: #f85149; }
     .app-action-btn mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    /* Screenshot gallery */
+    .app-screenshots { padding: 8px 14px; border-top: 1px solid var(--color-border-light); }
+    .screenshots-header { display: flex; align-items: center; gap: 6px; font-size: .75rem; color: var(--color-text-subtle); margin-bottom: 6px; }
+    .screenshots-header mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .screenshots-track { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; scroll-snap-type: x mandatory; }
+    .screenshot-thumb {
+      scroll-snap-align: start; flex-shrink: 0; position: relative; cursor: pointer;
+      border-radius: 6px; overflow: hidden; border: 1px solid var(--color-border-light); transition: border-color .2s, transform .2s;
+    }
+    .screenshot-thumb:hover { border-color: var(--color-primary); transform: scale(1.03); }
+    .screenshot-thumb img { width: 140px; height: 90px; object-fit: cover; display: block; }
+    .thumb-caption {
+      position: absolute; bottom: 0; left: 0; right: 0; padding: 2px 6px;
+      background: rgba(0,0,0,.6); color: #fff; font-size: .6rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    /* Lightbox */
+    .lightbox-overlay {
+      position: fixed; inset: 0; z-index: 2000;
+      background: rgba(0,0,0,.85); display: flex; flex-direction: column;
+      align-items: center; justify-content: center; cursor: pointer;
+    }
+    .lightbox-overlay img { max-width: 90vw; max-height: 80vh; border-radius: 8px; cursor: default; }
+    .lightbox-caption { color: #fff; font-size: .88rem; margin-top: .75rem; }
+    .lightbox-close {
+      position: absolute; top: 20px; right: 20px;
+      border: none; background: rgba(255,255,255,.1); color: #fff;
+      width: 40px; height: 40px; border-radius: 50%; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .lightbox-nav {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      border: none; background: rgba(255,255,255,.15); color: #fff;
+      width: 48px; height: 48px; border-radius: 50%; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .2s; z-index: 10;
+    }
+    .lightbox-nav:hover { background: rgba(255,255,255,.3); }
+    .lightbox-nav mat-icon { font-size: 32px; width: 32px; height: 32px; }
+    .lb-prev { left: 24px; }
+    .lb-next { right: 24px; }
+    .lightbox-counter {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      color: rgba(255,255,255,.8); font-size: .8rem; background: rgba(0,0,0,.4);
+      padding: 4px 12px; border-radius: 12px;
+    }
+
     .apps-empty {
       grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center;
       padding: 3rem; text-align: center; color: var(--color-text-subtle);
@@ -1294,6 +1382,7 @@ export class ProjectDetailComponent implements OnInit {
     private snackBar: MatSnackBar,
     private fb: FormBuilder,
     private sanitizer: DomSanitizer,
+    private authService: AuthService,
   ) {
     marked.setOptions({ breaks: true, gfm: true });
   }
@@ -1310,6 +1399,7 @@ export class ProjectDetailComponent implements OnInit {
         this.updateParsedPresentation();
         this.initForm();
         this.loadCoachMessages();
+        this.loadAllScreenshots();
         this.loading = false;
       },
       error: () => { this.loading = false; },
@@ -1414,6 +1504,47 @@ export class ProjectDetailComponent implements OnInit {
   openAppUrl(app: any): void {
     const url = `https://nonshattering-adelaida-ponchoed.ngrok-free.dev${app.basePath}/`;
     window.open(url, '_blank');
+  }
+
+  // Screenshot gallery
+  lightboxUrl = '';
+  lightboxCaption = '';
+  lightboxScreenshots: any[] = [];
+  lightboxIndex = 0;
+  lightboxAppName = '';
+  appScreenshots: Record<string, any[]> = {};
+
+  loadAllScreenshots(): void {
+    if (!this.project?._id) return;
+    for (const app of (this.project.applications || [])) {
+      this.projectService.listScreenshots(this.project._id, app.name).subscribe({
+        next: (list) => { this.appScreenshots[app.name] = list; },
+        error: () => {},
+      });
+    }
+  }
+
+  getScreenshotUrl(appName: string, filename: string): string {
+    const token = this.authService.getToken();
+    return `${environment.apiUrl}/companies/${this.project?._id}/applications/${encodeURIComponent(appName)}/screenshots/${encodeURIComponent(filename)}?token=${token}`;
+  }
+
+  openLightbox(app: any, ss: any, index: number): void {
+    this.lightboxAppName = app.name;
+    this.lightboxScreenshots = this.appScreenshots[app.name] || [];
+    this.lightboxIndex = index;
+    this.lightboxUrl = this.getScreenshotUrl(app.name, ss.filename);
+    this.lightboxCaption = ss.caption || ss.originalName;
+  }
+
+  navigateLightbox(delta: number, event: Event): void {
+    event.stopPropagation();
+    const newIdx = this.lightboxIndex + delta;
+    if (newIdx < 0 || newIdx >= this.lightboxScreenshots.length) return;
+    this.lightboxIndex = newIdx;
+    const ss = this.lightboxScreenshots[newIdx];
+    this.lightboxUrl = this.getScreenshotUrl(this.lightboxAppName, ss.filename);
+    this.lightboxCaption = ss.caption || ss.originalName;
   }
 
   countTasks(emp: any, status: string): number {

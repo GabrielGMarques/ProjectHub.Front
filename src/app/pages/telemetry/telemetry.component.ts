@@ -1,6 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -482,7 +483,7 @@ import { TelemetryService, TelemetryStats, TelemetryEventItem, ExecutionLog, Exe
                 <h3>By Employee</h3>
                 <div class="token-emp-list">
                   @for (emp of tokenStats.byEmployee; track emp.employeeId) {
-                    <div class="token-emp-row">
+                    <div class="token-emp-row clickable" (click)="openEmployeeInHR(emp.employeeId)" matTooltip="Open in HR panel">
                       <span class="token-emp-avatar">{{ emp.avatar }}</span>
                       <span class="token-emp-name">{{ emp.name }}</span>
                       <span class="token-emp-role">{{ emp.role }}</span>
@@ -499,6 +500,7 @@ import { TelemetryService, TelemetryStats, TelemetryEventItem, ExecutionLog, Exe
 
             <!-- Recent usage records -->
             <h3 class="section-title">Recent API Calls</h3>
+            <p class="token-hint">Per-interaction breakdown available in each employee's Costs tab (HR panel).</p>
             <div class="event-list">
               @for (r of tokenRecords; track r._id) {
                 <div class="event-row token-row">
@@ -517,7 +519,7 @@ import { TelemetryService, TelemetryStats, TelemetryEventItem, ExecutionLog, Exe
                     <span class="event-desc">{{ formatTokenCount(r.inputTokens) }} in / {{ formatTokenCount(r.outputTokens) }} out / {{ formatTokenCount(r.cacheReadTokens) }} cache</span>
                   </div>
                   <div class="event-meta">
-                    <span class="token-cost-badge">\${{ r.costUsd.toFixed(4) }}</span>
+                    <span class="token-cost-badge">{{'$'}}{{ r.costUsd.toFixed(4) }}</span>
                     @if (r.durationMs) {
                       <span class="event-duration">{{ formatDuration(r.durationMs) }}</span>
                     }
@@ -791,6 +793,9 @@ import { TelemetryService, TelemetryStats, TelemetryEventItem, ExecutionLog, Exe
     .token-emp-cost { font-size: 0.72rem; font-weight: 600; color: #a78bfa; width: 55px; text-align: right; }
     .section-title { font-size: 0.9rem; font-weight: 700; color: var(--color-text); margin: 1rem 0 0.5rem; }
     .token-row { border-left-color: #a78bfa; }
+    .token-hint { font-size: .8rem; color: var(--color-text-subtle); text-align: center; padding: 12px; }
+    .token-emp-row.clickable { cursor: pointer; transition: background .15s; }
+    .token-emp-row.clickable:hover { background: var(--color-bg-elevated); }
     .token-icon { color: #a78bfa; }
     .token-model-badge { font-size: 0.6rem; font-weight: 700; padding: 1px 6px; border-radius: 100px; background: rgba(168,85,247,0.1); color: #a78bfa; }
     .token-cost-badge { font-size: 0.72rem; font-weight: 700; color: #a78bfa; }
@@ -802,7 +807,7 @@ export class TelemetryComponent implements OnInit {
   stats: TelemetryStats | null = null;
   events: TelemetryEventItem[] = [];
   errors: TelemetryEventItem[] = [];
-  logTab: 'runs' | 'errors' | 'execlog' | 'gordon' | 'employees' | 'tokens' = 'execlog';
+  logTab: 'runs' | 'errors' | 'execlog' | 'gordon' | 'employees' | 'tokens' = 'tokens';
   execLog: ExecutionLog | null = null;
   execLogLoading = false;
   execLogHours = 48;
@@ -823,7 +828,7 @@ export class TelemetryComponent implements OnInit {
   private maxDaily = 1;
   private maxDailyTokens = 1;
 
-  constructor(private telemetryService: TelemetryService) {}
+  constructor(private telemetryService: TelemetryService, private router: Router) {}
 
   ngOnInit(): void {
     this.loadAll();
@@ -834,6 +839,7 @@ export class TelemetryComponent implements OnInit {
     this.loadStats();
     this.loadEvents();
     this.loadExecLog();
+    this.loadTokenUsage();
   }
 
   loadStats(): void {
@@ -1014,5 +1020,9 @@ export class TelemetryComponent implements OnInit {
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
     return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  openEmployeeInHR(employeeId: string): void {
+    this.router.navigate(['/hr'], { queryParams: { employee: employeeId, tab: 'costs' } });
   }
 }

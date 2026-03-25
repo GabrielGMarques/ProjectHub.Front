@@ -113,6 +113,10 @@ export class ProjectService {
     return this.http.delete<any>(`${this.apiUrl}/${projectId}/applications/${encodeURIComponent(appName)}`);
   }
 
+  listScreenshots(projectId: string, appName: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/${projectId}/applications/${encodeURIComponent(appName)}/screenshots`);
+  }
+
   // Infrastructure
   getInfraStatus(): Observable<any> {
     return this.http.get<any>(`${environment.apiUrl}/infrastructure/status`);

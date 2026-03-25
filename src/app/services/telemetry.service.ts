@@ -160,4 +160,11 @@ export class TelemetryService {
   getRecentTokenUsage(limit: number = 50): Observable<TokenUsageRecord[]> {
     return this.http.get<TokenUsageRecord[]>(`${this.apiUrl}/token-usage/recent`, { params: { limit: limit.toString() } });
   }
+
+  getEmployeeTokenUsage(employeeId: string, limit: number = 100): Observable<{
+    records: TokenUsageRecord[];
+    summary: { totalTokens: number; totalCost: number; totalCalls: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number };
+  }> {
+    return this.http.get<any>(`${this.apiUrl}/token-usage/employee/${employeeId}`, { params: { limit: limit.toString() } });
+  }
 }

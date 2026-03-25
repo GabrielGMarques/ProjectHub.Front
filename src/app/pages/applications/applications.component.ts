@@ -6,6 +6,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ProjectService } from '../../services/project.service';
+import { AuthService } from '../../services/auth.service';
 import { Project, Application } from '../../models/project.model';
 import { environment } from '../../../environments/environment';
 
@@ -90,18 +91,25 @@ import { environment } from '../../../environments/environment';
                     </div>
                   }
 
-                  <!-- Screenshot gallery -->
-                  @if (app.screenshots?.length) {
-                    <div class="app-gallery">
-                      <div class="gallery-scroll">
-                        @for (ss of app.screenshots; track ss.filename) {
-                          <div class="gallery-thumb" (click)="openScreenshot(group.companyId, app.name, ss)"
+                  <!-- Screenshot carousel -->
+                  @if (getAppScreenshots(group.companyId, app.name).length) {
+                    <div class="app-carousel">
+                      <div class="carousel-header">
+                        <mat-icon class="carousel-icon">photo_library</mat-icon>
+                        <span>{{ getAppScreenshots(group.companyId, app.name).length }} screenshot{{ getAppScreenshots(group.companyId, app.name).length !== 1 ? 's' : '' }}</span>
+                      </div>
+                      <div class="carousel-track">
+                        @for (ss of getAppScreenshots(group.companyId, app.name); track ss.filename; let i = $index) {
+                          <div class="carousel-slide"
+                               (click)="openScreenshot(group.companyId, app.name, ss, getAppScreenshots(group.companyId, app.name), i)"
                                [matTooltip]="ss.caption || ss.originalName">
-                            <img [src]="getScreenshotUrl(group.companyId, app.name, ss.filename)" [alt]="ss.caption" />
+                            <img [src]="getScreenshotUrl(group.companyId, app.name, ss.filename)" [alt]="ss.caption" loading="lazy" />
+                            @if (ss.caption) {
+                              <span class="slide-caption">{{ ss.caption }}</span>
+                            }
                           </div>
                         }
                       </div>
-                      <span class="gallery-count">{{ app.screenshots.length }} screenshot{{ app.screenshots.length !== 1 ? 's' : '' }}</span>
                     </div>
                   }
 
@@ -130,11 +138,20 @@ import { environment } from '../../../environments/environment';
         }
       }
 
-      <!-- Screenshot lightbox -->
+      <!-- Screenshot lightbox with navigation -->
       @if (lightboxUrl) {
         <div class="lightbox" (click)="lightboxUrl = ''">
+          @if (lightboxScreenshots.length > 1 && lightboxIndex > 0) {
+            <button class="lightbox-nav lightbox-prev" (click)="lightboxNav(-1, $event)"><mat-icon>chevron_left</mat-icon></button>
+          }
           <img [src]="lightboxUrl" (click)="$event.stopPropagation()" />
+          @if (lightboxScreenshots.length > 1 && lightboxIndex < lightboxScreenshots.length - 1) {
+            <button class="lightbox-nav lightbox-next" (click)="lightboxNav(1, $event)"><mat-icon>chevron_right</mat-icon></button>
+          }
           <span class="lightbox-caption">{{ lightboxCaption }}</span>
+          @if (lightboxScreenshots.length > 1) {
+            <span class="lightbox-counter">{{ lightboxIndex + 1 }} / {{ lightboxScreenshots.length }}</span>
+          }
           <button class="lightbox-close" (click)="lightboxUrl = ''"><mat-icon>close</mat-icon></button>
         </div>
       }
@@ -220,9 +237,21 @@ import { environment } from '../../../environments/environment';
     .meta { display: flex; align-items: center; gap: 3px; font-size: .72rem; color: var(--color-text-subtle); font-family: 'Fira Code', monospace; }
     .meta mat-icon { font-size: 13px; width: 13px; height: 13px; }
 
-    /* Screenshot gallery */
-    .app-gallery { padding: 8px 14px; border-top: 1px solid var(--color-border-light); }
-    .gallery-scroll { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+    /* Screenshot carousel */
+    .app-carousel { padding: 8px 14px; border-top: 1px solid var(--color-border-light); }
+    .carousel-header { display: flex; align-items: center; gap: 6px; font-size: .75rem; color: var(--color-text-subtle); margin-bottom: 6px; }
+    .carousel-icon { font-size: 16px; width: 16px; height: 16px; }
+    .carousel-track { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; scroll-snap-type: x mandatory; }
+    .carousel-slide {
+      scroll-snap-align: start; flex-shrink: 0; position: relative; cursor: pointer;
+      border-radius: 6px; overflow: hidden; border: 1px solid var(--color-border-light); transition: border-color .2s, transform .2s;
+    }
+    .carousel-slide:hover { border-color: var(--color-primary); transform: scale(1.03); }
+    .carousel-slide img { width: 140px; height: 90px; object-fit: cover; display: block; }
+    .slide-caption {
+      position: absolute; bottom: 0; left: 0; right: 0; padding: 2px 6px;
+      background: rgba(0,0,0,.6); color: #fff; font-size: .6rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
     .gallery-thumb {
       width: 64px; height: 48px; flex-shrink: 0; border-radius: 4px; overflow: hidden;
       cursor: pointer; border: 1px solid var(--color-border-light); transition: border-color .15s;
@@ -270,6 +299,22 @@ import { environment } from '../../../environments/environment';
       width: 40px; height: 40px; border-radius: 50%; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
     }
+    .lightbox-nav {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      border: none; background: rgba(255,255,255,.15); color: #fff;
+      width: 48px; height: 48px; border-radius: 50%; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .2s; z-index: 10;
+    }
+    .lightbox-nav:hover { background: rgba(255,255,255,.3); }
+    .lightbox-nav mat-icon { font-size: 32px; width: 32px; height: 32px; }
+    .lightbox-prev { left: 24px; }
+    .lightbox-next { right: 24px; }
+    .lightbox-counter {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      color: rgba(255,255,255,.8); font-size: .8rem; background: rgba(0,0,0,.4);
+      padding: 4px 12px; border-radius: 12px;
+    }
   `],
 })
 export class ApplicationsComponent implements OnInit {
@@ -278,6 +323,11 @@ export class ApplicationsComponent implements OnInit {
   infraStatus: any = null;
   lightboxUrl = '';
   lightboxCaption = '';
+  lightboxScreenshots: any[] = [];
+  lightboxIndex = 0;
+  lightboxCompanyId = '';
+  lightboxAppName = '';
+  appScreenshots: Record<string, any[]> = {};  // key: "projectId/appName"
 
   get groupedApps(): { companyId: string; companyName: string; apps: Application[] }[] {
     return this.projects
@@ -293,12 +343,28 @@ export class ApplicationsComponent implements OnInit {
 
   constructor(
     private projectService: ProjectService,
+    private authService: AuthService,
     private snackBar: MatSnackBar,
   ) {}
 
+  getAppScreenshots(companyId: string, appName: string): any[] {
+    return this.appScreenshots[companyId + '/' + appName] || [];
+  }
+
+  private loadAllScreenshots(): void {
+    for (const p of this.projects) {
+      for (const app of (p.applications || [])) {
+        this.projectService.listScreenshots(p._id!, app.name).subscribe({
+          next: (list) => { this.appScreenshots[p._id + '/' + app.name] = list; },
+          error: () => {},
+        });
+      }
+    }
+  }
+
   ngOnInit(): void {
     this.projectService.getAll().subscribe({
-      next: (projects) => { this.projects = projects; this.loading = false; },
+      next: (projects) => { this.projects = projects; this.loading = false; this.loadAllScreenshots(); },
       error: () => { this.loading = false; },
     });
     this.projectService.getInfraStatus().subscribe({
@@ -308,11 +374,26 @@ export class ApplicationsComponent implements OnInit {
   }
 
   getScreenshotUrl(companyId: string, appName: string, filename: string): string {
-    return `${environment.apiUrl}/companies/${companyId}/applications/${encodeURIComponent(appName)}/screenshots/${encodeURIComponent(filename)}`;
+    const token = this.authService.getToken();
+    return `${environment.apiUrl}/companies/${companyId}/applications/${encodeURIComponent(appName)}/screenshots/${encodeURIComponent(filename)}?token=${token}`;
   }
 
-  openScreenshot(companyId: string, appName: string, ss: any): void {
+  openScreenshot(companyId: string, appName: string, ss: any, allScreenshots?: any[], index?: number): void {
+    this.lightboxCompanyId = companyId;
+    this.lightboxAppName = appName;
+    this.lightboxScreenshots = allScreenshots || [ss];
+    this.lightboxIndex = index ?? 0;
     this.lightboxUrl = this.getScreenshotUrl(companyId, appName, ss.filename);
+    this.lightboxCaption = ss.caption || ss.originalName;
+  }
+
+  lightboxNav(delta: number, event: Event): void {
+    event.stopPropagation();
+    const newIdx = this.lightboxIndex + delta;
+    if (newIdx < 0 || newIdx >= this.lightboxScreenshots.length) return;
+    this.lightboxIndex = newIdx;
+    const ss = this.lightboxScreenshots[newIdx];
+    this.lightboxUrl = this.getScreenshotUrl(this.lightboxCompanyId, this.lightboxAppName, ss.filename);
     this.lightboxCaption = ss.caption || ss.originalName;
   }
 
