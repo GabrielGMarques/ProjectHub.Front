@@ -29,6 +29,10 @@ import { User } from '../../models/user.model';
         <span class="spacer"></span>
         @if (authService.isLoggedIn) {
           <div class="nav-links">
+            <a class="nav-link" routerLink="/hr" routerLinkActive="active">
+              <mat-icon>business</mat-icon>
+              <span>Companies</span>
+            </a>
             <a class="nav-link" routerLink="/dashboard" routerLinkActive="active">
               <mat-icon>dashboard</mat-icon>
               <span>Dashboard</span>
@@ -45,13 +49,13 @@ import { User } from '../../models/user.model';
               <mat-icon>calendar_month</mat-icon>
               <span>Schedule</span>
             </a>
-            <a class="nav-link" routerLink="/hr" routerLinkActive="active">
-              <mat-icon>groups</mat-icon>
-              <span>HR</span>
-            </a>
             <a class="nav-link" routerLink="/applications" routerLinkActive="active">
               <mat-icon>dns</mat-icon>
               <span>Apps</span>
+            </a>
+            <a class="nav-link" routerLink="/todos" routerLinkActive="active">
+              <mat-icon>checklist</mat-icon>
+              <span>Todos</span>
             </a>
             <a class="nav-link" routerLink="/telemetry" routerLinkActive="active">
               <mat-icon>monitoring</mat-icon>

@@ -218,7 +218,7 @@ import { environment } from '../../../environments/environment';
               <div class="empty-employees">
                 <mat-icon>groups</mat-icon>
                 <h3>No employees assigned</h3>
-                <p>Go to the <a routerLink="/hr">HR Department</a> to hire employees for this company.</p>
+                <p>Go to <a routerLink="/hr">Companies</a> to hire employees for this company.</p>
               </div>
             } @else {
               <div class="employees-grid">

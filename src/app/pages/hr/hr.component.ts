@@ -26,8 +26,8 @@ import { marked } from 'marked';
   template: `
     <div class="hr-page">
       <div class="page-header">
-        <h1>HR Department</h1>
-        <p class="subtitle">Hire and manage AI employees for your companies</p>
+        <h1>Companies</h1>
+        <p class="subtitle">Manage your companies and their AI employees</p>
       </div>
 
       @if (loading) {
