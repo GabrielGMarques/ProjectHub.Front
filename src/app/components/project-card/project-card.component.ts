@@ -50,14 +50,14 @@ import { Project, Todo } from '../../models/project.model';
         }
         @if (isEditing) {
           <mat-form-field class="full-width" appearance="outline">
-            <mat-label>Project Name</mat-label>
+            <mat-label>Company Name</mat-label>
             <input matInput [formControl]="$any(form.controls['name'])" />
           </mat-form-field>
         } @else {
           <h3 class="card-title">{{ project.name }}</h3>
         }
         <div class="card-actions">
-          <a class="icon-btn" [routerLink]="['/project', project._id]" matTooltip="View Details">
+          <a class="icon-btn" [routerLink]="['/company', project._id]" matTooltip="View Details">
             <mat-icon>open_in_new</mat-icon>
           </a>
           <button class="icon-btn" (click)="toggleExpand()" [matTooltip]="expanded ? 'Collapse' : 'Expand'">
@@ -116,7 +116,7 @@ import { Project, Todo } from '../../models/project.model';
             <mat-form-field class="full-width" appearance="outline">
               <mat-label>Monetization Plan</mat-label>
               <textarea matInput formControlName="monetizationPlan" rows="4"
-                placeholder="How will this project generate revenue?"></textarea>
+                placeholder="How will this company generate revenue?"></textarea>
             </mat-form-field>
           </form>
         } @else {

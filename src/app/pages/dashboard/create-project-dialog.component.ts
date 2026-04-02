@@ -26,7 +26,7 @@ import { MatOptionModule } from '@angular/material/core';
   template: `
     <div class="dialog-wrapper">
       <div class="dialog-header">
-        <h2>New Project</h2>
+        <h2>New Company</h2>
         <button class="close-btn" mat-dialog-close>
           <mat-icon>close</mat-icon>
         </button>
@@ -35,7 +35,7 @@ import { MatOptionModule } from '@angular/material/core';
       <mat-dialog-content>
         <form [formGroup]="form" class="create-form">
           <mat-form-field class="full-width" appearance="outline">
-            <mat-label>Project Name</mat-label>
+            <mat-label>Company Name</mat-label>
             <input matInput formControlName="name" required />
           </mat-form-field>
 
@@ -85,7 +85,7 @@ import { MatOptionModule } from '@angular/material/core';
           <mat-form-field class="full-width" appearance="outline">
             <mat-label>Monetization Plan</mat-label>
             <textarea matInput formControlName="monetizationPlan" rows="3"
-              placeholder="How will this project generate revenue?"></textarea>
+              placeholder="How will this company generate revenue?"></textarea>
           </mat-form-field>
         </form>
       </mat-dialog-content>
@@ -93,7 +93,7 @@ import { MatOptionModule } from '@angular/material/core';
       <div class="dialog-actions">
         <button class="btn-secondary" mat-dialog-close>Cancel</button>
         <button class="btn-primary" [disabled]="form.invalid" (click)="submit()">
-          Create Project
+          Create Company
         </button>
       </div>
     </div>

@@ -19,7 +19,7 @@ import { Project, Skill, AIModel, AIModelOption } from '../../models/project.mod
       <div class="skills-header">
         <div class="header-left">
           <h3><mat-icon>auto_fix_high</mat-icon> Skills</h3>
-          <p class="subtitle">One-click operations for your project</p>
+          <p class="subtitle">One-click operations for your company</p>
         </div>
         <div class="header-actions">
           <div class="model-selector">

@@ -6,7 +6,7 @@ import { environment } from '../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class ProjectService {
-  private apiUrl = `${environment.apiUrl}/projects`;
+  private apiUrl = `${environment.apiUrl}/companies`;
 
   constructor(private http: HttpClient) {}
 
@@ -56,12 +56,86 @@ export class ProjectService {
     return this.http.post<{ response: string }>(`${this.apiUrl}/${projectId}/ai/coach`, { messages, model });
   }
 
+  saveCoachMessages(projectId: string, messages: ChatMessage[]): Observable<void> {
+    return this.http.put<void>(`${this.apiUrl}/${projectId}/ai/coach/messages`, { messages });
+  }
+
+  clearCoachMessages(projectId: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/${projectId}/ai/coach/messages`);
+  }
+
+  pickFolder(): Observable<{ path: string }> {
+    return this.http.post<{ path: string }>(`${this.apiUrl}/pick-folder`, {});
+  }
+
   browseFolders(folderPath?: string): Observable<{ current: string; parent: string | null; entries: { name: string; path: string; isDir: boolean }[] }> {
     const params: Record<string, string> = {};
     if (folderPath) params['path'] = folderPath;
     return this.http.get<{ current: string; parent: string | null; entries: { name: string; path: string; isDir: boolean }[] }>(
       `${this.apiUrl}/browse-folders`, { params }
     );
+  }
+
+  listFiles(projectId: string, dirPath?: string, root?: string): Observable<{
+    current: string; parent: string | null;
+    entries: { name: string; path: string; isDir: boolean; size?: number; ext?: string }[]
+  }> {
+    const params: Record<string, string> = {};
+    if (dirPath) params['path'] = dirPath;
+    if (root) params['root'] = root;
+    return this.http.get<any>(`${this.apiUrl}/${projectId}/files/list`, { params });
+  }
+
+  readFile(projectId: string, filePath: string, root?: string): Observable<{ path: string; content: string; size: number }> {
+    const params: Record<string, string> = { path: filePath };
+    if (root) params['root'] = root;
+    return this.http.get<any>(`${this.apiUrl}/${projectId}/files/read`, { params });
+  }
+
+  writeFile(projectId: string, filePath: string, content: string, root?: string): Observable<{ message: string; path: string }> {
+    return this.http.post<any>(`${this.apiUrl}/${projectId}/files/write`, { path: filePath, content, root });
+  }
+
+  openInExplorer(projectId: string, relativePath?: string, root?: string): Observable<{ message: string }> {
+    return this.http.post<any>(`${this.apiUrl}/${projectId}/files/open-in-explorer`, { path: relativePath || '', root });
+  }
+
+  // Applications
+  addApplication(projectId: string, app: any): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/${projectId}/applications`, app);
+  }
+
+  updateApplication(projectId: string, appName: string, updates: any): Observable<any> {
+    return this.http.put<any>(`${this.apiUrl}/${projectId}/applications/${encodeURIComponent(appName)}`, updates);
+  }
+
+  removeApplication(projectId: string, appName: string): Observable<any> {
+    return this.http.delete<any>(`${this.apiUrl}/${projectId}/applications/${encodeURIComponent(appName)}`);
+  }
+
+  listScreenshots(projectId: string, appName: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/${projectId}/applications/${encodeURIComponent(appName)}/screenshots`);
+  }
+
+  // Infrastructure
+  getInfraStatus(): Observable<any> {
+    return this.http.get<any>(`${environment.apiUrl}/infrastructure/status`);
+  }
+
+  startGateway(): Observable<any> {
+    return this.http.post<any>(`${environment.apiUrl}/infrastructure/gateway/start`, {});
+  }
+
+  restartGateway(): Observable<any> {
+    return this.http.post<any>(`${environment.apiUrl}/infrastructure/gateway/restart`, {});
+  }
+
+  startNgrok(): Observable<any> {
+    return this.http.post<any>(`${environment.apiUrl}/infrastructure/ngrok/start`, {});
+  }
+
+  stopNgrok(): Observable<any> {
+    return this.http.post<any>(`${environment.apiUrl}/infrastructure/ngrok/stop`, {});
   }
 
   getTimeAllocation(): Observable<{ projectId: string; name: string; timeConsumption: number }[]> {

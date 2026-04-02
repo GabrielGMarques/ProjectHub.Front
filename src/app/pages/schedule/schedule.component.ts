@@ -33,7 +33,7 @@ interface CalendarDay {
       <div class="page-header">
         <div>
           <h1>Schedule</h1>
-          <p class="subtitle">Weekly work schedule across your projects</p>
+          <p class="subtitle">Weekly work schedule across your companies</p>
         </div>
       </div>
 
@@ -42,8 +42,8 @@ interface CalendarDay {
       } @else if (projects.length === 0) {
         <div class="empty-state">
           <div class="empty-icon"><mat-icon>calendar_month</mat-icon></div>
-          <h2>No projects yet</h2>
-          <p>Add projects to start planning your schedule.</p>
+          <h2>No companies yet</h2>
+          <p>Add companies to start planning your schedule.</p>
         </div>
       } @else {
         <!-- Controls -->
@@ -71,7 +71,7 @@ interface CalendarDay {
               <table class="editor-table">
                 <thead>
                   <tr>
-                    <th class="project-col">Project</th>
+                    <th class="project-col">Company</th>
                     @for (d of dayShort; track d) {
                       <th>{{ d }}</th>
                     }
@@ -369,7 +369,7 @@ export class ScheduleComponent implements OnInit {
         this.loading = false;
       },
       error: () => {
-        this.snackBar.open('Failed to load projects', 'Close', { duration: 3000 });
+        this.snackBar.open('Failed to load companies', 'Close', { duration: 3000 });
         this.loading = false;
       },
     });

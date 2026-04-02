@@ -13,16 +13,16 @@ import { AuthService } from '../../services/auth.service';
       <div class="login-card">
         <div class="login-header">
           <div class="login-logo">
-            <span class="logo-icon">P</span>
+            <span class="logo-icon">C</span>
           </div>
-          <h1>Welcome to ProjectsHub</h1>
-          <p class="subtitle">Manage and monitor all your projects in one place</p>
+          <h1>Welcome to CompaniesHub</h1>
+          <p class="subtitle">Manage and monitor all your companies in one place</p>
         </div>
 
         <div class="login-features">
           <div class="feature">
             <mat-icon>dashboard</mat-icon>
-            <span>Project Dashboard</span>
+            <span>Company Dashboard</span>
           </div>
           <div class="feature">
             <mat-icon>bar_chart</mat-icon>

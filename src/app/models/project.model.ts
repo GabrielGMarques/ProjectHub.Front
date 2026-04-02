@@ -23,9 +23,20 @@ export interface ProjectDocument {
   uploadedAt: string;
 }
 
+export interface CoachAction {
+  type: 'add_todos' | 'update_presentation' | 'update_field';
+  items?: string[];
+  content?: string;
+  field?: string;
+  value?: string;
+  status: 'pending' | 'accepted' | 'rejected';
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  actions?: CoachAction[];
+  timestamp?: string;
 }
 
 export type AIModel = 'claude-sonnet' | 'gpt-4o' | 'gemini-2.5-flash';
@@ -88,11 +99,15 @@ export interface AgentStep {
 
 export interface AgentSession {
   sessionId: string;
+  sdkSessionId?: string;
   type: 'marketing-research' | 'claude-code' | 'skill';
   status: 'running' | 'completed' | 'failed' | 'cancelled';
+  prompt?: string;
+  events?: ClaudeCodeEvent[];
   steps: AgentStep[];
   createdAt: string;
   completedAt?: string;
+  eventCount?: number;
 }
 
 // Claude Code Events
@@ -116,6 +131,44 @@ export interface Skill {
   isBuiltIn: boolean;
 }
 
+export interface AppScreenshot {
+  filename: string;
+  originalName: string;
+  caption: string;
+  takenBy: string;
+  takenAt: string;
+}
+
+export interface Application {
+  name: string;
+  port: number;
+  type: 'frontend' | 'backend' | 'fullstack' | 'service' | 'database';
+  dockerService: string;
+  command: string;
+  status: 'running' | 'stopped' | 'building' | 'error';
+  tested: boolean;
+  basePath: string;
+  description: string;
+  purpose: string;
+  testInstructions: string;
+  screenshots: AppScreenshot[];
+  // UI-only toggle
+  _showTestInstructions?: boolean;
+}
+
+export interface StrategicCycle {
+  status: 'idle' | 'pending_directions' | 'active' | 'dev' | 'qa' | 'done';
+  advice: string;
+  advisorRole: string;
+  advisorName: string;
+  startedAt?: string;
+  completedAt?: string;
+  devTasksTotal: number;
+  devTasksDone: number;
+  qaTasksTotal: number;
+  qaTasksDone: number;
+}
+
 export interface Project {
   _id?: string;
   userId?: string;
@@ -124,18 +177,26 @@ export interface Project {
   backgroundImage: string;
   githubRepos: string[];
   localPath: string;
+  folders: string[];
   mrr: number;
   clientCount: number;
   impact: 'low' | 'medium' | 'high';
   niche: string;
+  onHolding: boolean;
+  strategicDirection: string;
+  strategicCycle: StrategicCycle;
   timeConsumption: number;
+  timeSpent: number;
+  timeSpentPerDay: WeeklySchedule;
   todos: Todo[];
   presentation: string;
   monetizationPlan: string;
   schedule: WeeklySchedule;
   documents: ProjectDocument[];
+  applications: Application[];
   marketingResearch: MarketingResearch;
   agentSessions: AgentSession[];
+  coachMessages: ChatMessage[];
   sortOrder?: number;
   burndownSortOrder?: number;
   createdAt?: string;
