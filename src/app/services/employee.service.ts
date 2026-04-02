@@ -153,6 +153,10 @@ export class EmployeeService {
   }
 
   // Control
+  updatePrompt(employeeId: string, systemPrompt: string): Observable<Employee> {
+    return this.http.patch<Employee>(`${this.apiUrl}/${employeeId}/prompt`, { systemPrompt });
+  }
+
   restartEmployee(employeeId: string): Observable<{ message: string }> {
     return this.http.post<{ message: string }>(`${this.apiUrl}/${employeeId}/restart`, {});
   }

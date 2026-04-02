@@ -486,6 +486,43 @@ import { marked } from 'marked';
                     </div>
                     <p class="detail-desc">{{ selectedEmployee.description }}</p>
 
+                    <!-- System Prompt Editor -->
+                    <div class="prompt-section">
+                      <div class="prompt-header" (click)="promptExpanded = !promptExpanded">
+                        <h3><mat-icon>psychology</mat-icon> Instruction Prompt</h3>
+                        <div class="prompt-header-right">
+                          @if (isUsingDefaultPrompt(selectedEmployee)) {
+                            <span class="prompt-badge default">default</span>
+                          } @else {
+                            <span class="prompt-badge custom">custom</span>
+                          }
+                          <mat-icon class="prompt-chevron">{{ promptExpanded ? 'expand_less' : 'expand_more' }}</mat-icon>
+                        </div>
+                      </div>
+                      @if (promptExpanded) {
+                        <div class="prompt-body">
+                          <textarea class="prompt-editor"
+                            [(ngModel)]="promptDraft"
+                            rows="12"
+                            placeholder="System prompt for this employee..."></textarea>
+                          <div class="prompt-actions">
+                            <button class="prompt-btn reset" (click)="resetPromptToDefault(selectedEmployee)" matTooltip="Restore default prompt for this role">
+                              <mat-icon>restart_alt</mat-icon> Reset to default
+                            </button>
+                            <span class="spacer"></span>
+                            <button class="prompt-btn save" (click)="savePrompt(selectedEmployee)" [disabled]="promptSaving || promptDraft === selectedEmployee.systemPrompt">
+                              @if (promptSaving) {
+                                <mat-spinner diameter="14"></mat-spinner>
+                              } @else {
+                                <mat-icon>save</mat-icon>
+                              }
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      }
+                    </div>
+
                     <!-- Logs panel (Manage tab) -->
                     @if (showLogsFor === selectedEmployee._id) {
                       <div class="logs-panel">
@@ -2308,6 +2345,43 @@ import { marked } from 'marked';
     .detail-status.idle { color: var(--color-text-subtle); }
     .detail-status.working { color: #22c55e; }
     .detail-desc { font-size: 0.85rem; color: var(--color-text-subtle); margin: 0 0 1rem; line-height: 1.5; }
+
+    /* Prompt editor */
+    .prompt-section { margin-bottom: 1rem; border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); overflow: hidden; }
+    .prompt-header {
+      display: flex; align-items: center; justify-content: space-between; padding: 8px 12px;
+      cursor: pointer; transition: background var(--transition);
+    }
+    .prompt-header:hover { background: var(--color-border-light); }
+    .prompt-header h3 { font-size: 0.85rem; font-weight: 600; color: var(--color-text); margin: 0; display: flex; align-items: center; gap: 6px; }
+    .prompt-header h3 mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--color-primary); }
+    .prompt-header-right { display: flex; align-items: center; gap: 8px; }
+    .prompt-chevron { font-size: 18px; width: 18px; height: 18px; color: var(--color-text-subtle); }
+    .prompt-badge {
+      font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.03em;
+    }
+    .prompt-badge.default { background: rgba(212, 175, 55, 0.15); color: var(--color-primary); }
+    .prompt-badge.custom { background: rgba(34, 197, 94, 0.15); color: var(--color-success); }
+    .prompt-body { padding: 0 12px 12px; }
+    .prompt-editor {
+      width: 100%; padding: 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      background: var(--color-bg-card); color: var(--color-text); font-size: 0.8rem; font-family: 'Consolas', 'Monaco', monospace;
+      line-height: 1.5; resize: vertical; outline: none; transition: border-color var(--transition); box-sizing: border-box;
+    }
+    .prompt-editor:focus { border-color: var(--color-primary); }
+    .prompt-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+    .prompt-actions .spacer { flex: 1; }
+    .prompt-btn {
+      display: flex; align-items: center; gap: 4px; padding: 5px 12px; border-radius: var(--radius-sm);
+      font-size: 0.8rem; font-weight: 500; cursor: pointer; border: 1px solid var(--color-border); background: none;
+      color: var(--color-text-muted); transition: all var(--transition);
+    }
+    .prompt-btn mat-icon, .prompt-btn mat-spinner { font-size: 14px; width: 14px; height: 14px; }
+    .prompt-btn.reset:hover { border-color: var(--color-text-subtle); color: var(--color-text); }
+    .prompt-btn.save { background: var(--color-primary); color: #0A0A0A; border-color: var(--color-primary); }
+    .prompt-btn.save:hover { opacity: 0.85; }
+    .prompt-btn.save:disabled { opacity: 0.4; cursor: default; }
+
     .logs-btn {
       border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); background: none;
       color: var(--color-text-subtle); cursor: pointer; padding: 6px; display: flex;
@@ -2924,6 +2998,11 @@ export class HrComponent implements OnInit, OnDestroy {
   historicalLogs: { category: string; icon: string; time: string; content: string }[] = [];
   private lastTaskInput = '';
 
+  // Prompt editor
+  promptExpanded = false;
+  promptDraft = '';
+  promptSaving = false;
+
   // Logs
   showLogsFor = '';
   logsFilter = '';
@@ -3234,11 +3313,47 @@ export class HrComponent implements OnInit, OnDestroy {
 
   selectEmployee(emp: Employee): void {
     this.selectedEmployee = emp;
+    this.promptDraft = emp.systemPrompt;
+    this.promptExpanded = false;
     this.agentEntries = [];
     this.agentRunning = false;
     // Refresh to get latest data
     this.employeeService.getById(emp._id!).subscribe({
-      next: (fresh) => this.selectedEmployee = fresh,
+      next: (fresh) => { this.selectedEmployee = fresh; this.promptDraft = fresh.systemPrompt; },
+    });
+  }
+
+  isUsingDefaultPrompt(emp: Employee): boolean {
+    const tpl = this.roles.find(r => r.role === emp.role);
+    return !!tpl && emp.systemPrompt === tpl.systemPrompt;
+  }
+
+  getDefaultPrompt(emp: Employee): string {
+    return this.roles.find(r => r.role === emp.role)?.systemPrompt || '';
+  }
+
+  resetPromptToDefault(emp: Employee): void {
+    const defaultPrompt = this.getDefaultPrompt(emp);
+    if (!defaultPrompt) return;
+    this.promptDraft = defaultPrompt;
+    this.savePrompt(emp);
+  }
+
+  savePrompt(emp: Employee): void {
+    if (!emp._id || this.promptDraft === emp.systemPrompt) return;
+    this.promptSaving = true;
+    this.employeeService.updatePrompt(emp._id, this.promptDraft).subscribe({
+      next: (updated) => {
+        this.promptSaving = false;
+        if (this.selectedEmployee?._id === updated._id) {
+          this.selectedEmployee = updated;
+        }
+        this.snackBar.open('Prompt saved', '', { duration: 2000 });
+      },
+      error: () => {
+        this.promptSaving = false;
+        this.snackBar.open('Failed to save prompt', '', { duration: 3000 });
+      },
     });
   }
 
