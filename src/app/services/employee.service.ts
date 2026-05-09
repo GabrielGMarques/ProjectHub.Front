@@ -1,7 +1,7 @@
 import { Injectable, NgZone } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Employee, EmployeeSkill, RoleTemplate, CommFile } from '../models/employee.model';
+import { Employee, EmployeeSkill, RoleTemplate, CommFile, HeartbeatConfig } from '../models/employee.model';
 import { ClaudeCodeEvent } from '../models/project.model';
 import { environment } from '../../environments/environment';
 
@@ -176,6 +176,28 @@ export class EmployeeService {
   getStatusHistory(employeeId: string, page = 1, limit = 50): Observable<StatusHistoryResponse> {
     return this.http.get<StatusHistoryResponse>(`${this.apiUrl}/${employeeId}/status-history?page=${page}&limit=${limit}`);
   }
+
+  // Heartbeat — opt-in periodic recurring task
+  getHeartbeat(employeeId: string): Observable<HeartbeatConfig> {
+    return this.http.get<HeartbeatConfig>(`${this.apiUrl}/${employeeId}/heartbeat`);
+  }
+
+  updateHeartbeat(employeeId: string, update: Partial<{ enabled: boolean; intervalMs: number; prompt: string }>): Observable<HeartbeatConfig> {
+    return this.http.put<HeartbeatConfig>(`${this.apiUrl}/${employeeId}/heartbeat`, update);
+  }
+
+  // Session history
+  getEmployeeSessions(employeeId: string, limit = 50): Observable<EmployeeSession[]> {
+    return this.http.get<EmployeeSession[]>(`${this.apiUrl}/${employeeId}/sessions?limit=${limit}`);
+  }
+
+  getAllSessions(page = 1, pageSize = 50): Observable<SessionsListResponse> {
+    return this.http.get<SessionsListResponse>(`${this.apiUrl}/sessions/all?page=${page}&pageSize=${pageSize}`);
+  }
+
+  getSessionDetail(sessionId: string): Observable<SessionDetailResponse> {
+    return this.http.get<SessionDetailResponse>(`${this.apiUrl}/sessions/${sessionId}`);
+  }
 }
 
 export interface EmployeeLogEntry {
@@ -222,6 +244,65 @@ export interface StatusHistoryResponse {
   page: number;
   limit: number;
   pages: number;
+}
+
+export interface EmployeeSession {
+  _id: string;
+  userId: string;
+  employeeId: string;
+  projectId: string;
+  internalSessionId: string;
+  sdkSessionId?: string;
+  employeeName: string;
+  employeeRole: string;
+  projectName: string;
+  aiModel: string;
+  startedAt: string;
+  endedAt?: string;
+  durationMs?: number;
+  endReason?: 'dismissed' | 'cancelled' | 'completed' | 'failed' | 'restarted';
+  taskIds: string[];
+  numTasks: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  numSegments: number;
+  numTurns: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SessionsListResponse {
+  sessions: EmployeeSession[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface SessionTask {
+  taskId: string;
+  description: string;
+  status: string;
+  result?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export interface SessionLog {
+  _id: string;
+  category: string;
+  content: string;
+  createdAt: string;
+  metadata?: Record<string, any>;
+}
+
+export interface SessionDetailResponse {
+  session: EmployeeSession;
+  tasks: SessionTask[];
+  logs: SessionLog[];
 }
 
 export interface EmployeeMemoryEntry {

@@ -1,4 +1,5 @@
 export const environment = {
   production: false,
-  apiUrl: 'http://localhost:3777/api',
+  // Relative path — works both on localhost (via Angular dev-server proxy) and via the gateway/ngrok
+  apiUrl: '/api',
 };

@@ -205,6 +205,9 @@ import { marked } from 'marked';
                     <button class="ctrl-btn" [class.active]="detailTab === 'chat'" (click)="detailTab = detailTab === 'chat' ? 'task' : 'chat'" matTooltip="Chat">
                       <mat-icon>chat</mat-icon>
                     </button>
+                    <button class="ctrl-btn" [class.active]="detailTab === 'heartbeat'" [class.heartbeat-active]="selectedEmployee.heartbeatEnabled" (click)="detailTab = detailTab === 'heartbeat' ? 'task' : 'heartbeat'; detailTab === 'heartbeat' && loadHeartbeat(selectedEmployee)" matTooltip="Heartbeat">
+                      <mat-icon>favorite</mat-icon>
+                    </button>
                     <button class="ctrl-btn" (click)="openLogs(selectedEmployee)" matTooltip="Logs">
                       <mat-icon>receipt_long</mat-icon>
                     </button>
@@ -307,6 +310,67 @@ import { marked } from 'marked';
                         <mat-icon>add</mat-icon>
                       </button>
                     </div>
+                  </div>
+                }
+
+                <!-- Heartbeat panel -->
+                @if (detailTab === 'heartbeat') {
+                  <div class="heartbeat-panel">
+                    <div class="heartbeat-header">
+                      <h3><mat-icon>favorite</mat-icon> Heartbeat</h3>
+                      <span class="heartbeat-state" [class.on]="heartbeatConfig.enabled">
+                        {{ heartbeatConfig.enabled ? 'ENABLED' : 'DISABLED' }}
+                      </span>
+                    </div>
+                    @if (heartbeatLoading) {
+                      <div class="logs-loading"><mat-spinner diameter="20"></mat-spinner> Loading...</div>
+                    } @else {
+                      <p class="heartbeat-help">
+                        When enabled, this employee runs the prompt below at the configured interval.
+                        Tasks fired by heartbeat are tagged <code>[HEARTBEAT]</code> and skipped if the employee is already working.
+                      </p>
+
+                      <div class="heartbeat-row">
+                        <label class="heartbeat-toggle">
+                          <input type="checkbox" [(ngModel)]="heartbeatConfig.enabled" />
+                          <span>Enable heartbeat</span>
+                        </label>
+                      </div>
+
+                      <div class="heartbeat-row">
+                        <label class="heartbeat-label">Interval (minutes)</label>
+                        <input type="number" min="1" [(ngModel)]="heartbeatConfig.intervalMinutes" class="heartbeat-input-num" />
+                        <span class="heartbeat-hint">
+                          Default 180 (3h). Min 1.
+                          Currently: every {{ heartbeatConfig.intervalMinutes }} minute(s)
+                        </span>
+                      </div>
+
+                      <div class="heartbeat-row">
+                        <label class="heartbeat-label">Heartbeat prompt</label>
+                        <textarea
+                          [(ngModel)]="heartbeatConfig.prompt"
+                          rows="6"
+                          placeholder="e.g. Check the status of all running services and report any anomalies in your working status."
+                          class="heartbeat-textarea"
+                        ></textarea>
+                      </div>
+
+                      @if (heartbeatConfig.lastHeartbeatAt) {
+                        <p class="heartbeat-last">
+                          Last heartbeat: {{ heartbeatConfig.lastHeartbeatAt | date:'MM/dd HH:mm:ss' }}
+                        </p>
+                      } @else {
+                        <p class="heartbeat-last">Not yet fired.</p>
+                      }
+
+                      <div class="heartbeat-actions">
+                        <button class="hb-save-btn" (click)="saveHeartbeat(selectedEmployee)" [disabled]="heartbeatSaving">
+                          <mat-icon>save</mat-icon>
+                          {{ heartbeatSaving ? 'Saving...' : 'Save heartbeat' }}
+                        </button>
+                      </div>
+                    }
                   </div>
                 }
 
@@ -1028,9 +1092,9 @@ import { marked } from 'marked';
               </div>
 
               <!-- Action Routes -->
-              @for (cat of [['employee', 'Employee Actions'], ['alfred', 'Alfred Actions'], ['strategic', 'Strategic']]; track cat[0]) {
+              @for (cat of [['heartbeat', 'Heartbeat (Recurring Tasks)'], ['employee', 'Employee Actions'], ['alfred', 'Alfred Actions'], ['strategic', 'Strategic']]; track cat[0]) {
                 <div class="models-section">
-                  <h3><mat-icon>{{ cat[0] === 'employee' ? 'engineering' : cat[0] === 'alfred' ? 'smart_toy' : 'flag' }}</mat-icon> {{ cat[1] }}</h3>
+                  <h3><mat-icon>{{ catIcon(cat[0]) }}</mat-icon> {{ cat[1] }}</h3>
                   @for (route of getActionsByCategory(cat[0]); track route.action) {
                     <div class="model-toggle-row">
                       <span class="model-label">{{ route.label }}</span>
@@ -2432,6 +2496,32 @@ import { marked } from 'marked';
     .emp-chat-input button:disabled { opacity: 0.4; cursor: not-allowed; }
 
     /* Memory panel */
+    /* Heartbeat panel */
+    .heartbeat-panel { border: 1px solid var(--color-border-light); border-radius: var(--radius-md); margin-bottom: 1rem; padding: 14px; }
+    .heartbeat-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .heartbeat-header h3 { margin: 0; font-size: .85rem; display: flex; align-items: center; gap: 6px; color: var(--color-text); }
+    .heartbeat-state { font-size: .65rem; font-weight: 700; padding: 3px 8px; border-radius: 99px; background: var(--color-bg-subtle); color: var(--color-text-subtle); letter-spacing: .04em; }
+    .heartbeat-state.on { background: #fee2e2; color: #b91c1c; }
+    .heartbeat-help { font-size: .72rem; color: var(--color-text-subtle); margin: 0 0 12px; line-height: 1.4; }
+    .heartbeat-help code { background: var(--color-bg-subtle); padding: 1px 4px; border-radius: 3px; font-size: .68rem; }
+    .heartbeat-row { margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px; }
+    .heartbeat-toggle { display: flex; align-items: center; gap: 8px; font-size: .78rem; cursor: pointer; }
+    .heartbeat-toggle input[type="checkbox"] { width: 16px; height: 16px; accent-color: #ef4444; cursor: pointer; }
+    .heartbeat-label { font-size: .72rem; font-weight: 600; color: var(--color-text-subtle); text-transform: uppercase; letter-spacing: .04em; }
+    .heartbeat-input-num { padding: 6px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg); color: var(--color-text); font-family: inherit; font-size: .85rem; max-width: 120px; }
+    .heartbeat-hint { font-size: .68rem; color: var(--color-text-subtle); }
+    .heartbeat-textarea { padding: 8px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg); color: var(--color-text); font-family: inherit; font-size: .8rem; resize: vertical; min-height: 80px; }
+    .heartbeat-last { font-size: .68rem; color: var(--color-text-subtle); margin: 0 0 12px; }
+    .heartbeat-actions { display: flex; gap: 8px; }
+    .hb-save-btn {
+      display: flex; align-items: center; gap: 6px; border: 1px solid var(--color-primary); border-radius: var(--radius-sm);
+      background: var(--color-primary); color: #fff; font-family: inherit; font-size: .78rem; font-weight: 600;
+      padding: 8px 16px; cursor: pointer;
+    }
+    .hb-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .ctrl-btn.heartbeat-active { color: #ef4444; }
+    .ctrl-btn.heartbeat-active mat-icon { color: #ef4444; }
+
     .memory-panel { border: 1px solid var(--color-border-light); border-radius: var(--radius-md); margin-bottom: 1rem; overflow: hidden; }
     .memory-header {
       display: flex; align-items: center; justify-content: space-between;
@@ -3121,7 +3211,17 @@ export class HrComponent implements OnInit, OnDestroy {
   private debugSub: Subscription | null = null;
 
   // Detail tabs
-  detailTab: 'task' | 'chat' | 'memory' = 'task';
+  detailTab: 'task' | 'chat' | 'memory' | 'heartbeat' = 'task';
+
+  // Heartbeat config
+  heartbeatConfig: { enabled: boolean; intervalMinutes: number; prompt: string; lastHeartbeatAt: string | null } = {
+    enabled: false,
+    intervalMinutes: 180,
+    prompt: '',
+    lastHeartbeatAt: null,
+  };
+  heartbeatLoading = false;
+  heartbeatSaving = false;
 
   // Chat
   chatMessages: { role: 'user' | 'agent'; text: string }[] = [];
@@ -3809,6 +3909,47 @@ export class HrComponent implements OnInit, OnDestroy {
     });
   }
 
+  loadHeartbeat(emp: Employee): void {
+    this.heartbeatLoading = true;
+    this.employeeService.getHeartbeat(emp._id!).subscribe({
+      next: (cfg) => {
+        this.heartbeatConfig = {
+          enabled: cfg.enabled || false,
+          intervalMinutes: Math.round((cfg.intervalMs || (3 * 60 * 60 * 1000)) / 60000),
+          prompt: cfg.prompt || '',
+          lastHeartbeatAt: cfg.lastHeartbeatAt,
+        };
+        this.heartbeatLoading = false;
+      },
+      error: () => { this.heartbeatLoading = false; },
+    });
+  }
+
+  saveHeartbeat(emp: Employee): void {
+    const intervalMs = Math.max(60_000, this.heartbeatConfig.intervalMinutes * 60_000);
+    this.heartbeatSaving = true;
+    this.employeeService.updateHeartbeat(emp._id!, {
+      enabled: this.heartbeatConfig.enabled,
+      intervalMs,
+      prompt: this.heartbeatConfig.prompt,
+    }).subscribe({
+      next: (cfg) => {
+        this.heartbeatSaving = false;
+        this.heartbeatConfig.lastHeartbeatAt = cfg.lastHeartbeatAt;
+        this.snackBar.open(
+          this.heartbeatConfig.enabled
+            ? `Heartbeat enabled — every ${this.heartbeatConfig.intervalMinutes}min`
+            : 'Heartbeat disabled',
+          'Close', { duration: 2500 },
+        );
+      },
+      error: (err) => {
+        this.heartbeatSaving = false;
+        this.snackBar.open(err.error?.error || 'Failed to save heartbeat', 'Close', { duration: 3000 });
+      },
+    });
+  }
+
   compactLogs(emp: Employee): void {
     this.compacting = true;
     this.employeeService.compactLogs(emp._id!).subscribe({
@@ -4205,6 +4346,16 @@ export class HrComponent implements OnInit, OnDestroy {
 
   getActionsByCategory(category: string): ActionRoute[] {
     return (this.modelConfig?.actionRoutes || []).filter(r => r.category === category);
+  }
+
+  catIcon(category: string): string {
+    switch (category) {
+      case 'employee': return 'engineering';
+      case 'alfred': return 'smart_toy';
+      case 'strategic': return 'flag';
+      case 'heartbeat': return 'favorite';
+      default: return 'settings';
+    }
   }
 
   setGlobalDefault(model: string): void {

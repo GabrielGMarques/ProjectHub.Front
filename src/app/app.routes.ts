@@ -12,6 +12,7 @@ export const routes: Routes = [
   { path: 'hr', loadComponent: () => import('./pages/hr/hr.component').then(m => m.HrComponent), canActivate: [authGuard] },
   { path: 'applications', loadComponent: () => import('./pages/applications/applications.component').then(m => m.ApplicationsComponent), canActivate: [authGuard] },
   { path: 'telemetry', loadComponent: () => import('./pages/telemetry/telemetry.component').then(m => m.TelemetryComponent), canActivate: [authGuard] },
+  { path: 'sessions', loadComponent: () => import('./pages/sessions/sessions.component').then(m => m.SessionsComponent), canActivate: [authGuard] },
   { path: 'todos', loadComponent: () => import('./pages/bruce-todos/bruce-todos.component').then(m => m.BruceTodosComponent), canActivate: [authGuard] },
   { path: 'company/:id', loadComponent: () => import('./pages/project-detail/project-detail.component').then(m => m.ProjectDetailComponent), canActivate: [authGuard] },
   { path: '**', redirectTo: '/hr' },
