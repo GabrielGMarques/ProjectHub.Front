@@ -17,8 +17,8 @@ import { User } from '../../models/user.model';
     <nav class="navbar">
       <div class="navbar-inner">
         <a class="logo" routerLink="/">
-          <span class="logo-icon">C</span>
-          CompaniesHub
+          <img src="alfred.webp" alt="Alfred" class="logo-icon" />
+          Alfred
         </a>
         @if (currentProjectName) {
           <div class="project-indicator">
@@ -60,6 +60,10 @@ import { User } from '../../models/user.model';
             <a class="nav-link" routerLink="/telemetry" routerLinkActive="active">
               <mat-icon>monitoring</mat-icon>
               <span>Telemetry</span>
+            </a>
+            <a class="nav-link" routerLink="/sessions" routerLinkActive="active">
+              <mat-icon>history</mat-icon>
+              <span>Sessions</span>
             </a>
           </div>
           <button class="avatar-btn" [matMenuTriggerFor]="userMenu">
@@ -121,16 +125,12 @@ import { User } from '../../models/user.model';
       letter-spacing: -0.02em;
     }
     .logo-icon {
-      width: 32px;
-      height: 32px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--color-primary);
-      color: #0A0A0A;
-      font-weight: 700;
-      font-size: 0.9rem;
-      border-radius: var(--radius-sm);
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--color-primary);
+      flex-shrink: 0;
     }
 
     .project-indicator {

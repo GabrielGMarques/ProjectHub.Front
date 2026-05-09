@@ -13,9 +13,9 @@ import { AuthService } from '../../services/auth.service';
       <div class="login-card">
         <div class="login-header">
           <div class="login-logo">
-            <span class="logo-icon">C</span>
+            <img src="alfred.webp" alt="Alfred" class="logo-icon" />
           </div>
-          <h1>Welcome to CompaniesHub</h1>
+          <h1>Welcome to Alfred</h1>
           <p class="subtitle">Manage and monitor all your companies in one place</p>
         </div>
 
@@ -70,16 +70,11 @@ import { AuthService } from '../../services/auth.service';
       margin-bottom: 1.25rem;
     }
     .logo-icon {
-      width: 56px;
-      height: 56px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--color-primary);
-      color: #0A0A0A;
-      font-weight: 700;
-      font-size: 1.5rem;
-      border-radius: var(--radius-md);
+      width: 96px;
+      height: 96px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 3px solid var(--color-primary);
     }
     h1 {
       font-size: 1.5rem;

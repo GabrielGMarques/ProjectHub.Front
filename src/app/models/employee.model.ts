@@ -34,6 +34,18 @@ export interface Employee {
   workingStatusAt?: string;
   taskHistory: EmployeeTask[];
   hiredAt: string;
+  // Heartbeat — opt-in periodic recurring task
+  heartbeatEnabled?: boolean;
+  heartbeatIntervalMs?: number;
+  heartbeatPrompt?: string;
+  lastHeartbeatAt?: string;
+}
+
+export interface HeartbeatConfig {
+  enabled: boolean;
+  intervalMs: number;
+  prompt: string;
+  lastHeartbeatAt: string | null;
 }
 
 export interface RoleTemplate {

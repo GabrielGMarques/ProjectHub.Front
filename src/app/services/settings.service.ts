@@ -9,7 +9,7 @@ export interface ActionRoute {
   action: string;
   model: ModelTier;
   label: string;
-  category: 'employee' | 'alfred' | 'strategic';
+  category: 'employee' | 'alfred' | 'strategic' | 'heartbeat';
 }
 
 export interface RoleDefault {
