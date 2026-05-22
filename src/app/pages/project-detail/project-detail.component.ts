@@ -14,7 +14,7 @@ import { MatOptionModule } from '@angular/material/core';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { marked } from 'marked';
 import { ProjectService } from '../../services/project.service';
-import { Project, ChatMessage, CoachAction, Todo, WeeklySchedule, AIModel, AIModelOption } from '../../models/project.model';
+import { Project, ChatMessage, CoachAction, Todo, WeeklySchedule, AIModel, AIModelOption, CrmData } from '../../models/project.model';
 import { MarketingResearchComponent } from '../../components/marketing-research/marketing-research.component';
 import { AgentTerminalComponent } from '../../components/agent-terminal/agent-terminal.component';
 import { SkillsPanelComponent } from '../../components/skills-panel/skills-panel.component';
@@ -108,6 +108,7 @@ import { environment } from '../../../environments/environment';
           <button class="tab" [class.active]="activeTab === 'employees'" (click)="loadEmployees(); activeTab = 'employees'"><mat-icon>groups</mat-icon> Team <span class="tab-badge" *ngIf="projectEmployees.length">{{ projectEmployees.length }}</span></button>
           <button class="tab" [class.active]="activeTab === 'apps'" (click)="activeTab = 'apps'"><mat-icon>dns</mat-icon> Apps <span class="tab-badge" *ngIf="project.applications?.length">{{ project.applications.length }}</span></button>
           <button class="tab" [class.active]="activeTab === 'files'" (click)="activeTab = 'files'"><mat-icon>folder_open</mat-icon> Files</button>
+          <button class="tab" [class.active]="activeTab === 'crm'" (click)="openCrmTab()"><mat-icon>contacts</mat-icon> CRM</button>
           <button class="tab" [class.active]="activeTab === 'settings'" (click)="openSettings()"><mat-icon>settings</mat-icon> Settings</button>
         </div>
 
@@ -437,6 +438,133 @@ import { environment } from '../../../environments/environment';
           </div>
         } @else if (activeTab === 'files') {
           <app-file-explorer [project]="project" (projectUpdated)="project = $event"></app-file-explorer>
+        } @else if (activeTab === 'crm') {
+          <div class="crm-pane">
+            @if (crmLoading) {
+              <div class="crm-empty"><mat-icon>hourglass_top</mat-icon> Loading CRM data…</div>
+            } @else if (crmError) {
+              <div class="crm-empty crm-failed"><mat-icon>error</mat-icon> {{ crmError }}</div>
+            } @else if (crm?.linked) {
+              <div class="crm-toolbar">
+                <span class="crm-status">
+                  <mat-icon>check_circle</mat-icon>
+                  {{ crm?.twentyProject?.name || project.name }} · {{ crm?.companies?.length || 0 }} companies · {{ crm?.people?.length || 0 }} contacts · {{ crm?.opportunities?.length || 0 }} opportunities · {{ crm?.notes?.length || 0 }} notes
+                </span>
+                <span class="crm-open-group">
+                  <a class="crm-open" [href]="crm?.deepLink" target="_blank" rel="noopener" title="Open Project in Twenty">
+                    <mat-icon>folder_open</mat-icon> Project
+                  </a>
+                  @if (crm?.companiesViewLink) {
+                    <a class="crm-open" [href]="crm?.companiesViewLink" target="_blank" rel="noopener" title="Open Companies view filtered to this project">
+                      <mat-icon>business</mat-icon> Companies
+                    </a>
+                  }
+                  @if (crm?.peopleViewLink) {
+                    <a class="crm-open" [href]="crm?.peopleViewLink" target="_blank" rel="noopener" title="Open People view filtered to this project">
+                      <mat-icon>group</mat-icon> People
+                    </a>
+                  }
+                  @if (crm?.opportunitiesViewLink) {
+                    <a class="crm-open" [href]="crm?.opportunitiesViewLink" target="_blank" rel="noopener" title="Open Opportunities view filtered to this project">
+                      <mat-icon>trending_up</mat-icon> Opportunities
+                    </a>
+                  }
+                  @if (crm?.notesViewLink) {
+                    <a class="crm-open" [href]="crm?.notesViewLink" target="_blank" rel="noopener" title="Open Notes view filtered to this project">
+                      <mat-icon>sticky_note_2</mat-icon> Notes
+                    </a>
+                  }
+                </span>
+              </div>
+
+              <div class="crm-section">
+                <div class="crm-section-title"><mat-icon>business</mat-icon> Companies ({{ crm?.companies?.length || 0 }})</div>
+                @if ((crm?.companies?.length || 0) === 0) {
+                  <div class="crm-section-empty">No companies yet. AI employees create company records here for clients/leads.</div>
+                } @else {
+                  <div class="crm-people">
+                    @for (c of crm?.companies; track c.id) {
+                      <div class="crm-person">
+                        <div class="crm-person-avatar"><mat-icon>business</mat-icon></div>
+                        <div class="crm-person-body">
+                          <div class="crm-person-name">{{ c.name }}</div>
+                          @if (c.domainName?.primaryLinkUrl) { <div class="crm-person-meta"><mat-icon>link</mat-icon> {{ c.domainName?.primaryLinkUrl }}</div> }
+                          @if (c.address?.addressCity) { <div class="crm-person-meta"><mat-icon>place</mat-icon> {{ c.address?.addressCity }}{{ c.address?.addressCountry ? ', ' + c.address?.addressCountry : '' }}</div> }
+                          @if (c.annualRecurringRevenue?.amountMicros) { <div class="crm-person-meta"><mat-icon>payments</mat-icon> {{ (c.annualRecurringRevenue?.amountMicros || 0) / 1000000 | currency:c.annualRecurringRevenue?.currencyCode || 'USD' }}</div> }
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+
+              <div class="crm-section">
+                <div class="crm-section-title"><mat-icon>contacts</mat-icon> Contacts ({{ crm?.people?.length || 0 }})</div>
+                @if ((crm?.people?.length || 0) === 0) {
+                  <div class="crm-section-empty">No contacts yet. AI employees create contacts here when they meet new leads.</div>
+                } @else {
+                  <div class="crm-people">
+                    @for (p of crm?.people; track p.id) {
+                      <div class="crm-person">
+                        <div class="crm-person-avatar">
+                          @if (p.avatarUrl) { <img [src]="p.avatarUrl" alt=""> } @else { <mat-icon>person</mat-icon> }
+                        </div>
+                        <div class="crm-person-body">
+                          <div class="crm-person-name">{{ (p.name?.firstName || '') + ' ' + (p.name?.lastName || '') | titlecase }}</div>
+                          @if (p.jobTitle) { <div class="crm-person-meta">{{ p.jobTitle }}</div> }
+                          @if (p.emails?.primaryEmail) { <div class="crm-person-meta"><mat-icon>mail</mat-icon> {{ p.emails?.primaryEmail }}</div> }
+                          @if (p.phones?.primaryPhoneNumber) { <div class="crm-person-meta"><mat-icon>phone</mat-icon> {{ (p.phones?.primaryPhoneCallingCode || '') + ' ' + p.phones?.primaryPhoneNumber }}</div> }
+                          @if (p.city) { <div class="crm-person-meta"><mat-icon>place</mat-icon> {{ p.city }}</div> }
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+
+              @if ((crm?.opportunities?.length || 0) > 0) {
+                <div class="crm-section">
+                  <div class="crm-section-title"><mat-icon>trending_up</mat-icon> Opportunities ({{ crm?.opportunities?.length || 0 }})</div>
+                  <div class="crm-opps">
+                    @for (o of crm?.opportunities; track o.id) {
+                      <div class="crm-opp">
+                        <div class="crm-opp-name">{{ o.name }}</div>
+                        <div class="crm-opp-meta">
+                          @if (o.stage) { <span class="crm-opp-stage">{{ o.stage }}</span> }
+                          @if (o.amount?.amountMicros) { <span>{{ (o.amount?.amountMicros || 0) / 1000000 | currency:o.amount?.currencyCode || 'USD' }}</span> }
+                        </div>
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
+
+              @if ((crm?.notes?.length || 0) > 0) {
+                <div class="crm-section">
+                  <div class="crm-section-title"><mat-icon>sticky_note_2</mat-icon> Notes ({{ crm?.notes?.length || 0 }})</div>
+                  <div class="crm-opps">
+                    @for (n of crm?.notes; track n.id) {
+                      <div class="crm-opp">
+                        <div class="crm-opp-name">{{ n.title || '(untitled)' }}</div>
+                        <div class="crm-opp-meta">
+                          @if ((n.linkedCompanies?.length || 0) > 0) {
+                            <span class="crm-opp-stage"><mat-icon>business</mat-icon> {{ n.linkedCompanies?.[0]?.name }}{{ (n.linkedCompanies?.length || 0) > 1 ? ' +' + ((n.linkedCompanies?.length || 1) - 1) : '' }}</span>
+                          }
+                          @if (n.createdAt) { <span>{{ n.createdAt | date:'short' }}</span> }
+                        </div>
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
+            } @else if (project.twentyProvisionStatus === 'pending') {
+              <div class="crm-empty"><mat-icon>hourglass_top</mat-icon> Provisioning CRM company record…</div>
+            } @else if (project.twentyProvisionStatus === 'failed') {
+              <div class="crm-empty crm-failed"><mat-icon>error</mat-icon> CRM provisioning failed. Check backend logs.</div>
+            } @else {
+              <div class="crm-empty"><mat-icon>info</mat-icon> No CRM record linked yet. For older projects run <code>npx ts-node scripts/twenty-backfill.ts</code> in <code>backend/</code>.</div>
+            }
+          </div>
         }
 
         <!-- Main content grid (Overview tab) -->
@@ -1128,6 +1256,38 @@ import { environment } from '../../../environments/environment';
     .emp-logs-pager button:disabled { opacity: .3; }
     .emp-logs-pager span { font-size: .68rem; color: var(--color-text-subtle); }
 
+    /* CRM Tab */
+    .crm-pane { display: flex; flex-direction: column; gap: 18px; }
+    .crm-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--color-bg-subtle); border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); font-size: .85rem; }
+    .crm-status { display: flex; align-items: center; gap: 8px; color: var(--color-text); }
+    .crm-status mat-icon { font-size: 16px; width: 16px; height: 16px; color: var(--color-success); }
+    .crm-open-group { display: flex; gap: 6px; }
+    .crm-open { display: flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); color: var(--color-text); text-decoration: none; font-size: .8rem; }
+    .crm-open:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    .crm-open mat-icon { font-size: 14px; width: 14px; height: 14px; }
+    .crm-section { display: flex; flex-direction: column; gap: 10px; }
+    .crm-section-title { display: flex; align-items: center; gap: 8px; font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-subtle); }
+    .crm-section-title mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .crm-section-empty { padding: 24px; text-align: center; color: var(--color-text-subtle); font-size: .85rem; background: var(--color-bg-subtle); border: 1px dashed var(--color-border-light); border-radius: var(--radius-sm); }
+    .crm-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+    .crm-person { display: flex; gap: 12px; padding: 12px; background: var(--color-bg-subtle); border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); }
+    .crm-person-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--color-bg); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; }
+    .crm-person-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .crm-person-avatar mat-icon { color: var(--color-text-subtle); }
+    .crm-person-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .crm-person-name { font-weight: 600; font-size: .9rem; }
+    .crm-person-meta { display: flex; align-items: center; gap: 6px; font-size: .75rem; color: var(--color-text-subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .crm-person-meta mat-icon { font-size: 13px; width: 13px; height: 13px; }
+    .crm-opps { display: flex; flex-direction: column; gap: 8px; }
+    .crm-opp { display: flex; justify-content: space-between; padding: 10px 14px; background: var(--color-bg-subtle); border: 1px solid var(--color-border-light); border-radius: var(--radius-sm); }
+    .crm-opp-name { font-weight: 500; }
+    .crm-opp-meta { display: flex; gap: 12px; font-size: .8rem; color: var(--color-text-subtle); }
+    .crm-opp-stage { padding: 2px 8px; background: var(--color-bg); border-radius: 10px; font-size: .7rem; text-transform: uppercase; letter-spacing: .03em; }
+    .crm-empty { display: flex; align-items: center; gap: 10px; padding: 40px; justify-content: center; color: var(--color-text-subtle); }
+    .crm-empty mat-icon { font-size: 20px; width: 20px; height: 20px; }
+    .crm-empty.crm-failed { color: var(--color-danger); }
+    .crm-empty code { font-family: 'Fira Code', monospace; font-size: .72rem; background: var(--color-bg); padding: 2px 6px; border-radius: 3px; }
+
     /* Apps Tab */
     .apps-tab { padding: 1rem 0; }
     .apps-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
@@ -1334,7 +1494,12 @@ export class ProjectDetailComponent implements OnInit {
   project: Project | null = null;
   loading = true;
   isEditing = false;
-  activeTab: 'overview' | 'marketing' | 'agent' | 'skills' | 'employees' | 'apps' | 'files' | 'settings' = 'overview';
+  activeTab: 'overview' | 'marketing' | 'agent' | 'skills' | 'employees' | 'apps' | 'files' | 'crm' | 'settings' = 'overview';
+
+  // CRM tab state
+  crm: CrmData | null = null;
+  crmLoading = false;
+  crmError = '';
   projectEmployees: any[] = [];
 
   // Apps tab
@@ -1751,6 +1916,27 @@ export class ProjectDetailComponent implements OnInit {
   private parseMarkdown(content: string): SafeHtml {
     const html = marked.parse(content) as string;
     return this.sanitizer.bypassSecurityTrustHtml(html);
+  }
+
+  // CRM tab — fetches Company + People + Opportunities from the backend, which
+  // proxies to Twenty's REST API. Same-origin via ProjectsHub so it works under
+  // ngrok HTTPS without mixed-content issues.
+  openCrmTab(): void {
+    this.activeTab = 'crm';
+    if (!this.crm) this.loadCrm();
+  }
+
+  loadCrm(): void {
+    if (!this.project?._id) return;
+    this.crmLoading = true;
+    this.crmError = '';
+    this.projectService.getCrm(this.project._id).subscribe({
+      next: (data) => { this.crm = data; this.crmLoading = false; },
+      error: (err) => {
+        this.crmError = err?.error?.error || err?.message || 'Failed to load CRM data';
+        this.crmLoading = false;
+      },
+    });
   }
 
   private loadCoachMessages(): void {

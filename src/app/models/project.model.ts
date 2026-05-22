@@ -199,6 +199,69 @@ export interface Project {
   coachMessages: ChatMessage[];
   sortOrder?: number;
   burndownSortOrder?: number;
+  /** Twenty CRM `project` record UUID this ProjectsHub project maps to. */
+  twentyProjectId?: string;
+  /** @deprecated old project-meta Company id, kept until cleanup */
+  twentyCompanyId?: string;
+  twentyProvisionStatus?: 'pending' | 'provisioned' | 'failed';
   createdAt?: string;
   updatedAt?: string;
+}
+
+// CRM (Twenty) data returned by GET /api/companies/:id/crm
+export interface CrmPerson {
+  id: string;
+  name?: { firstName?: string; lastName?: string };
+  emails?: { primaryEmail?: string };
+  phones?: { primaryPhoneNumber?: string; primaryPhoneCallingCode?: string };
+  jobTitle?: string;
+  city?: string;
+  avatarUrl?: string;
+  linkedinLink?: { primaryLinkUrl?: string };
+  createdAt?: string;
+}
+
+export interface CrmCompany {
+  id: string;
+  name: string;
+  domainName?: { primaryLinkUrl?: string };
+  address?: { addressCity?: string; addressCountry?: string };
+  annualRecurringRevenue?: { amountMicros?: number; currencyCode?: string };
+  idealCustomerProfile?: boolean;
+  createdAt?: string;
+}
+
+export interface CrmOpportunity {
+  id: string;
+  name: string;
+  stage?: string;
+  amount?: { amountMicros?: number; currencyCode?: string };
+  closeDate?: string;
+  createdAt?: string;
+}
+
+export interface CrmNote {
+  id: string;
+  title?: string;
+  bodyV2?: { markdown?: string };
+  position?: number;
+  createdAt?: string;
+  /** Resolved from noteTargets by the backend — company records this note targets. */
+  linkedCompanies?: { id: string; name: string }[];
+}
+
+export interface CrmData {
+  linked: boolean;
+  status?: 'pending' | 'provisioned' | 'failed' | null;
+  projectId?: string;
+  deepLink?: string;
+  companiesViewLink?: string | null;
+  peopleViewLink?: string | null;
+  opportunitiesViewLink?: string | null;
+  notesViewLink?: string | null;
+  twentyProject?: { id: string; name: string } | null;
+  companies?: CrmCompany[];
+  people?: CrmPerson[];
+  opportunities?: CrmOpportunity[];
+  notes?: CrmNote[];
 }

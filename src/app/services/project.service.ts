@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Project, ChatMessage, AIModel, AIModelOption } from '../models/project.model';
+import { Project, ChatMessage, AIModel, AIModelOption, CrmData } from '../models/project.model';
 import { environment } from '../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
@@ -16,6 +16,10 @@ export class ProjectService {
 
   getById(id: string): Observable<Project> {
     return this.http.get<Project>(`${this.apiUrl}/${id}`);
+  }
+
+  getCrm(id: string): Observable<CrmData> {
+    return this.http.get<CrmData>(`${this.apiUrl}/${id}/crm`);
   }
 
   create(project: Partial<Project>): Observable<Project> {
